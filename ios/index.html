@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cek iPhone Gadai</title>
+<style>
+  :root { --biru:#1E63D0; --hijau:#1b8f3a; --merah:#c62828; --kuning:#b58900; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,system-ui,sans-serif; margin:0; background:#f4f6f8; color:#1a1a1a; }
+  .wrap { max-width:480px; margin:0 auto; padding:20px; min-height:100vh; display:flex; flex-direction:column; }
+  .head { text-align:center; padding:12px 0 4px; }
+  .head h1 { font-size:22px; margin:0; color:var(--biru); }
+  .head .sub { font-size:12px; color:#777; }
+  .card { background:#fff; border-radius:12px; padding:16px; margin:10px 0; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .btn { display:block; width:100%; padding:16px; border:0; border-radius:12px; font-size:17px; font-weight:600;
+         background:var(--biru); color:#fff; margin:8px 0; }
+  .btn:disabled { background:#aaa; }
+  .center { text-align:center; }
+  .muted { color:#777; font-size:13px; }
+  .err { color:var(--merah); font-weight:600; }
+  .ok { color:var(--hijau); font-weight:600; }
+  .rid { font-family:ui-monospace,monospace; font-size:13px; background:#eef2f7; padding:4px 8px; border-radius:6px; }
+  .spin { width:28px; height:28px; border:3px solid #ccc; border-top-color:var(--biru); border-radius:50%;
+          margin:16px auto; animation:s 1s linear infinite; }
+  @keyframes s { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>📱 Cek iPhone Gadai</h1>
+    <div class="sub">DRPE iOS v0.1 (Fase I1 — skeleton) • tanpa install, tidak menyimpan data apa pun</div>
+  </div>
+  <div id="app"></div>
+</div>
+<script>
+'use strict';
+// ===== Konfigurasi (tanpa rahasia — token datang dari QR) =====
+var RELAY = 'https://rtfhuwijafxzlauulscg.supabase.co/functions/v1/submit-ios';
+
+var qs = new URLSearchParams(location.search);
+var RID = qs.get('r') || '';
+var ST = qs.get('st') || '';
+var app = document.getElementById('app');
+
+function el(html) { var d = document.createElement('div'); d.innerHTML = html; return d; }
+function api(body) {
+  return fetch(RELAY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (r) { return r.json(); });
+}
+
+function layarAwal() {
+  if (!RID || !ST) {
+    app.appendChild(el(
+      '<div class="card center"><p class="err">Link tidak lengkap.</p>' +
+      '<p class="muted">Halaman ini harus dibuka dengan scan QR dari HP penaksir ' +
+      '(menu Mulai Pemeriksaan → iPhone).</p></div>'));
+    return;
+  }
+  app.appendChild(el('<div class="card center"><div class="spin"></div><p>Menghubungi server…</p></div>'));
+  api({ action: 'config', report_id: RID, submit_token: ST }).then(function (j) {
+    app.innerHTML = '';
+    if (!j.ok) {
+      app.appendChild(el('<div class="card center"><p class="err">⚠️ ' + (j.error || 'gagal') + '</p>' +
+        '<p class="muted">Minta penaksir scan ulang / buat pemeriksaan baru.</p></div>'));
+      return;
+    }
+    if (j.status !== 'DRAFT') {
+      app.appendChild(el('<div class="card center"><p class="err">Pemeriksaan ini sudah dikirim/final.</p></div>'));
+      return;
+    }
+    app.appendChild(el(
+      '<div class="card center"><p class="ok">✓ Terhubung ke ' + (j.outlet || 'outlet') + '</p>' +
+      '<p>Report: <span class="rid">' + RID + '</span></p>' +
+      '<p class="muted">Rangkaian tes iPhone dibangun di Fase I2–I4 — ini skeleton pairing.</p>' +
+      '<button class="btn" id="mulai">▶ MULAI TES (segera hadir)</button></div>'));
+    document.getElementById('mulai').onclick = function () {
+      alert('Rangkaian tes dibangun di fase berikutnya.');
+    };
+  }).catch(function (e) {
+    app.innerHTML = '';
+    app.appendChild(el('<div class="card center"><p class="err">Tidak bisa terhubung: ' + e + '</p>' +
+      '<p class="muted">Pastikan iPhone tersambung internet (hotspot HP penaksir / WiFi).</p>' +
+      '<button class="btn" onclick="location.reload()">COBA LAGI</button></div>'));
+  });
+}
+layarAwal();
+</script>
+</body>
+</html>
