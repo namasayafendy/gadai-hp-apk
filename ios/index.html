@@ -40,7 +40,7 @@
 <div class="wrap">
   <div class="head">
     <h1>📱 Cek iPhone Gadai</h1>
-    <div class="sub">DRPE iOS v0.2 (Fase I2) • tanpa install • tidak menyimpan data</div>
+    <div class="sub">DRPE iOS v0.4 • tanpa install • tidak menyimpan data</div>
   </div>
   <div id="app"></div>
 </div>
@@ -65,8 +65,8 @@ var S = {
 // ===== Tabel spek iPhone (pts x DPR; spek iPhone TETAP — bukan spec-learn) =====
 // promotion=120Hz; tt=True Tone; fid=Face ID (false=Touch ID); cyc=cycle count tampil di Settings (iPhone 15+)
 var SPEC = {
-  'iPhone 6s / 7 / 8 / SE2 / SE3': { w:375, h:667, d:2, promo:false, tt:true,  fid:false, cyc:false },
-  'iPhone 6s+ / 7+ / 8 Plus':      { w:414, h:736, d:3, promo:false, tt:true,  fid:false, cyc:false },
+  'iPhone 6s / 7 / 8 / SE2 / SE3': { w:375, h:667, d:2, promo:false, tt:null,  fid:false, cyc:false },
+  'iPhone 6s+ / 7+ / 8 Plus':      { w:414, h:736, d:3, promo:false, tt:null,  fid:false, cyc:false },
   'iPhone X / XS / 11 Pro':        { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
   'iPhone 12 mini / 13 mini':      { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
   'iPhone XR / 11':                { w:414, h:896, d:2, promo:false, tt:true,  fid:true,  cyc:false },
@@ -538,11 +538,176 @@ function layarTesFisik() {
   };
 }
 
-// ===== Placeholder Fase I4 =====
+// ============================================================
+// FASE I4 — WIZARD SETTINGS TERPANDU (10 item, dgn bukti durasi)
+// ============================================================
+var REGION_MAP = { PA:'Indonesia (resmi)', ID:'Indonesia (resmi)', ZP:'Hong Kong/Asia', LL:'Amerika (US)',
+  CH:'China', J:'Jepang', KH:'Korea', ZA:'Singapura', MY:'Malaysia', X:'Australia', B:'Inggris',
+  AE:'Emirat/Arab', AH:'Bahrain/Kuwait', HN:'India', TH:'Thailand', VN:'Vietnam' };
+
+function simpanWizard(key, value, note, mulai, skipped) {
+  S.settingsChecks[key] = {
+    value: value, note: note || null,
+    duration_sec: Math.round((Date.now() - mulai) / 1000),
+    skipped: !!skipped
+  };
+}
+
+// definisi item: [key, judul, instruksi, krusial, opsi [label, value, css]]
+function itemWizard() {
+  var claim = S.deviceIdentity.model_claimed || '';
+  var sp = SPEC[claim] || {};
+  return [
+    ['icloud_findmy', '1. AKUN iCLOUD / FIND MY (PALING PENTING)',
+      'Buka <b>Settings → [nama paling atas]</b>.<br>WAJIB: minta nasabah <b>LOGOUT/Sign Out</b> akun iCloud-nya DI DEPAN ANDA (perlu password asli — pencuri/bypass tidak bisa).<br>Setelah logout, bagian atas Settings harus berubah jadi "Sign in to your iPhone".',
+      true, [
+        ['🟢 SUDAH LOGOUT / tidak ada akun', 'CLEAN_LOGGED_OUT', 'hijau'],
+        ['🔴 MASIH LOGIN (nasabah tidak mau/tidak bisa)', 'MASIH_LOGIN', 'merah'],
+        ['🔴 TIDAK BISA LOGOUT (error/aneh — indikasi bypass!)', 'TIDAK_BISA_LOGOUT', 'merah']
+      ]],
+    ['parts_history', '2. KEASLIAN SPAREPART (Parts & Service History)',
+      'Buka <b>Settings → General → About</b>.<br>Lihat apakah ada bagian <b>"Parts and Service History"</b> atau peringatan <b>"Unknown Part"</b> ⚠️.',
+      true, [
+        ['🟢 TIDAK ada bagian itu = belum pernah ganti parts', 'ASLI_SEMUA', 'hijau'],
+        ['🟡 Ada riwayat servis RESMI Apple (Genuine Part)', 'ADA_SERVIS_RESMI', 'kuning'],
+        ['🔴 Ada "UNKNOWN PART" ⚠️ (parts non-ori!)', 'UNKNOWN_PART', 'merah'],
+        ['🟡 Menu tidak ada (iOS lama < 15.2)', 'TIDAK_ADA_MENU', 'kuning']
+      ]],
+    ['carrier_lock', '3. CARRIER LOCK (HP inter/BM terkunci operator)',
+      'Masih di <b>Settings → General → About</b>, cari baris <b>Carrier Lock / Network Provider Lock</b>.',
+      true, [
+        ['🟢 "No SIM restrictions" = unlocked', 'NO_RESTRICTIONS', 'hijau'],
+        ['🔴 "SIM locked" / terkunci operator', 'LOCKED', 'merah'],
+        ['🟡 Baris tidak ada', 'TIDAK_ADA', 'kuning']
+      ]],
+    ['model_number', '4. MODEL NUMBER → REGION', '_INPUT_MODEL_', false, null],
+    ['battery_settings', '5. BATTERY HEALTH' + (sp.cyc ? ' + CYCLE COUNT' : ''), '_INPUT_BATTERY_', false, null],
+    ['true_tone', '6. TRUE TONE (deteksi layar pernah diganti)',
+      'Buka <b>Settings → Display & Brightness</b>.<br>Apakah ada toggle <b>True Tone</b>?',
+      false, [
+        ['🟢 ADA toggle True Tone', 'ADA', 'hijau'],
+        ['🟡 TIDAK ADA (di model yang seharusnya ada = layar pernah diganti)', 'TIDAK_ADA', 'kuning']
+      ]],
+    ['faceid_touchid', '7. FACE ID / TOUCH ID',
+      'Kunci iPhone, lalu coba buka dengan <b>wajah/sidik jari</b> nasabah.',
+      false, [
+        ['🟢 BERFUNGSI (terbuka)', 'BAGUS', 'hijau'],
+        ['🔴 TIDAK berfungsi / "Face ID not available"', 'RUSAK', 'merah'],
+        ['🟡 Belum diatur (tidak terdaftar)', 'TIDAK_DIATUR', 'kuning']
+      ]],
+    ['sim_call', '8. TES TELEPON SIM (filter bypass sinyal)',
+      'Pasang SIM (boleh SIM penaksir) → lakukan <b>panggilan keluar</b>.<br>iPhone hasil bypass biasanya TIDAK bisa menelepon.',
+      true, [
+        ['🟢 TERSAMBUNG — sinyal & telepon normal', 'TERSAMBUNG', 'hijau'],
+        ['🔴 GAGAL — tidak ada layanan/tidak tersambung', 'GAGAL', 'merah']
+      ]],
+    ['storage_capacity', '9. KAPASITAS', '_INPUT_STORAGE_', false, null],
+    ['lci', '10. INDIKATOR CAIRAN (LCI) di slot SIM',
+      'Keluarkan tray SIM, senter lubang slot: titik indikator <b>putih = kering</b>, <b>merah/pink = pernah kena cairan</b>.',
+      false, [
+        ['🟢 PUTIH/kering', 'KERING', 'hijau'],
+        ['🔴 MERAH/PINK — bekas kena cairan', 'MERAH', 'merah'],
+        ['🟡 Tidak terlihat jelas', 'TIDAK_TERLIHAT', 'kuning']
+      ]]
+  ];
+}
+
 function layarWizard() {
-  var c = el('<div class="card center"><p class="ok">Tes fisik selesai.</p>' +
-    '<p class="muted">Wizard Settings (Fase I4) menyusul — kirim hasil sekarang.</p>' +
-    '<button class="btn" id="kirim">KIRIM HASIL</button></div>');
+  var items = itemWizard(), i = 0;
+  function satu() {
+    if (i >= items.length) { layarRingkasan(); return; }
+    var it = items[i], key = it[0], judul = it[1], instr = it[2], krusial = it[3], opsi = it[4];
+    var mulai = Date.now();
+    function lanjut() { i++; satu(); }
+    if (instr === '_INPUT_MODEL_') {
+      var c = el('<div><div class="card"><b>' + judul + '</b>' +
+        '<p>Buka <b>Settings → General → About → Model Number</b> (ketuk sekali bila perlu sampai tampil format MXXXXXX/A), lalu ketik di sini:</p>' +
+        '<input id="mn" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px;text-transform:uppercase" placeholder="mis. MQ823PA/A" autocapitalize="characters">' +
+        '<div id="hasil"></div><button class="btn" id="ok" disabled>SIMPAN & LANJUT</button>' +
+        '<button class="btn sec" id="skip">Lewati</button></div></div>');
+      show(c);
+      var inp = c.querySelector('#mn'), btn = c.querySelector('#ok'), hasil = c.querySelector('#hasil');
+      inp.oninput = function () {
+        var v = inp.value.toUpperCase().trim();
+        var m = v.match(/^[A-Z0-9]+?([A-Z]{1,2})\/A$/);
+        if (m) {
+          var reg = m[1], nama = REGION_MAP[reg] || ('kode ' + reg + ' (luar/inter)');
+          var resmi = (reg === 'PA' || reg === 'ID');
+          hasil.innerHTML = '<div class="alert ' + (resmi ? 'green' : 'yellow') + '">' +
+            (resmi ? '🟢 ' : '🟡 ') + 'Region: ' + nama + (resmi ? '' : ' — HP inter/BM (bukan garansi resmi ID)') + '</div>';
+          btn.disabled = false;
+          btn.onclick = function () { simpanWizard(key, v, 'region:' + reg + ' (' + nama + ')', mulai); lanjut(); };
+        } else { hasil.innerHTML = v.length > 4 ? '<p class="muted">format belum cocok (harus diakhiri /A)</p>' : ''; btn.disabled = true; }
+      };
+      c.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati', mulai, true); lanjut(); };
+      return;
+    }
+    if (instr === '_INPUT_BATTERY_') {
+      var sp = SPEC[S.deviceIdentity.model_claimed] || {};
+      var c2 = el('<div><div class="card"><b>' + judul + '</b>' +
+        '<p>Buka <b>Settings → Battery → Battery Health</b> → catat <b>Maximum Capacity</b>.' +
+        (sp.cyc ? '<br>Lalu <b>Settings → General → About</b> → catat <b>Cycle Count</b>.' : '') + '</p>' +
+        '<input id="bh" type="number" min="1" max="100" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Battery Health % (mis. 87)">' +
+        (sp.cyc ? '<br><br><input id="cy" type="number" min="0" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Cycle Count (mis. 412)">' : '') +
+        '<button class="btn" id="ok">SIMPAN & LANJUT</button>' +
+        '<button class="btn sec" id="skip">Lewati</button></div></div>');
+      show(c2);
+      c2.querySelector('#ok').onclick = function () {
+        var bh = parseInt(c2.querySelector('#bh').value, 10);
+        var cyEl = c2.querySelector('#cy');
+        var cy = cyEl ? parseInt(cyEl.value, 10) : NaN;
+        simpanWizard('battery_health_percent', isNaN(bh) ? null : bh, null, mulai);
+        simpanWizard('battery_cycle_count', isNaN(cy) ? null : cy, sp.cyc ? null : 'model tidak menampilkan cycle (cek via USB)', mulai);
+        lanjut();
+      };
+      c2.querySelector('#skip').onclick = function () {
+        simpanWizard('battery_health_percent', null, 'dilewati', mulai, true);
+        simpanWizard('battery_cycle_count', null, 'dilewati', mulai, true);
+        lanjut();
+      };
+      return;
+    }
+    if (instr === '_INPUT_STORAGE_') {
+      var caps = [32, 64, 128, 256, 512, 1024];
+      var html3 = '<div><div class="card"><b>' + judul + '</b><p>Buka <b>Settings → General → About → Capacity</b>:</p>';
+      for (var x = 0; x < caps.length; x++) html3 += '<button class="btn sec cap" data-v="' + caps[x] + '">' + (caps[x] >= 1024 ? '1 TB' : caps[x] + ' GB') + '</button>';
+      html3 += '<button class="btn sec" id="skip">Lewati</button></div></div>';
+      var c3 = el(html3); show(c3);
+      c3.querySelectorAll('.cap').forEach(function (b) { b.onclick = function () { simpanWizard(key, parseInt(b.getAttribute('data-v'), 10), null, mulai); lanjut(); }; });
+      c3.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati', mulai, true); lanjut(); };
+      return;
+    }
+    // item pilihan biasa
+    var html = '<div><div class="card"><b>' + judul + '</b><p style="font-size:15px">' + instr + '</p></div><div class="card">';
+    for (var o = 0; o < opsi.length; o++) html += '<button class="btn sec op" data-o="' + o + '" style="text-align:left">' + opsi[o][0] + '</button>';
+    html += '<button class="btn sec" id="skip" style="color:#999">Lewati item ini' + (krusial ? ' (akan 🔴 di laporan!)' : '') + '</button></div></div>';
+    var c4 = el(html); show(c4);
+    c4.querySelectorAll('.op').forEach(function (b) {
+      b.onclick = function () {
+        var op = opsi[+b.getAttribute('data-o')];
+        // konfirmasi 2-langkah utk item krusial (anti asal-ketuk + bukti durasi)
+        if (krusial && (Date.now() - mulai) < 4000) {
+          if (!confirm('Yakin sudah benar-benar membuka menu Settings-nya? (baru ' + Math.round((Date.now()-mulai)/1000) + ' dtk)')) return;
+        }
+        simpanWizard(key, op[1], null, mulai);
+        lanjut();
+      };
+    });
+    c4.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati penaksir', mulai, true); lanjut(); };
+  }
+  var intro = el('<div class="card center"><b>CEK SETTINGS iPHONE (10 langkah)</b>' +
+    '<p class="muted">Ikuti instruksi tiap langkah di Settings iPhone ini, lalu pilih hasilnya. ' +
+    'Langkah 1–3 & 8 paling penting — bila dilewati akan 🔴 di laporan.</p>' +
+    '<button class="btn" id="go">▶ MULAI</button></div>');
+  show(intro);
+  intro.querySelector('#go').onclick = satu;
+}
+
+function layarRingkasan() {
+  var n = Object.keys(S.guidedTests).length + Object.keys(S.settingsChecks).length;
+  var c = el('<div class="card center"><p class="ok" style="font-size:18px">Semua pemeriksaan selesai (' + n + ' item)</p>' +
+    '<p class="muted">Hasil akan dikirim ke HP penaksir. Tidak ada data pribadi yang ikut terkirim.</p>' +
+    '<button class="btn" id="kirim">📤 KIRIM HASIL</button></div>');
   show(c);
   c.querySelector('#kirim').onclick = function () { kirimHasil(false); };
 }
