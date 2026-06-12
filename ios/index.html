@@ -9,86 +9,296 @@
   :root { --biru:#1E63D0; --hijau:#1b8f3a; --merah:#c62828; --kuning:#b58900; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { font-family:-apple-system,system-ui,sans-serif; margin:0; background:#f4f6f8; color:#1a1a1a; }
-  .wrap { max-width:480px; margin:0 auto; padding:20px; min-height:100vh; display:flex; flex-direction:column; }
-  .head { text-align:center; padding:12px 0 4px; }
-  .head h1 { font-size:22px; margin:0; color:var(--biru); }
-  .head .sub { font-size:12px; color:#777; }
+  .wrap { max-width:480px; margin:0 auto; padding:16px; min-height:100vh; }
+  .head { text-align:center; padding:8px 0 4px; }
+  .head h1 { font-size:20px; margin:0; color:var(--biru); }
+  .head .sub { font-size:11px; color:#777; }
   .card { background:#fff; border-radius:12px; padding:16px; margin:10px 0; box-shadow:0 1px 4px rgba(0,0,0,.08); }
-  .btn { display:block; width:100%; padding:16px; border:0; border-radius:12px; font-size:17px; font-weight:600;
+  .btn { display:block; width:100%; padding:15px; border:0; border-radius:12px; font-size:16px; font-weight:600;
          background:var(--biru); color:#fff; margin:8px 0; }
+  .btn.sec { background:#e8edf5; color:var(--biru); }
   .btn:disabled { background:#aaa; }
   .center { text-align:center; }
   .muted { color:#777; font-size:13px; }
   .err { color:var(--merah); font-weight:600; }
   .ok { color:var(--hijau); font-weight:600; }
-  .rid { font-family:ui-monospace,monospace; font-size:13px; background:#eef2f7; padding:4px 8px; border-radius:6px; }
+  .warn { color:var(--kuning); font-weight:600; }
+  .rid { font-family:ui-monospace,monospace; font-size:12px; background:#eef2f7; padding:3px 6px; border-radius:6px; }
+  .row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:14px; }
+  .row b { text-align:right; max-width:60%; }
   .spin { width:28px; height:28px; border:3px solid #ccc; border-top-color:var(--biru); border-radius:50%;
-          margin:16px auto; animation:s 1s linear infinite; }
+          margin:14px auto; animation:s 1s linear infinite; }
   @keyframes s { to { transform:rotate(360deg); } }
+  select { width:100%; padding:12px; font-size:16px; border-radius:10px; border:1px solid #ccc; background:#fff; }
+  .alert { border-radius:12px; padding:14px; margin:10px 0; font-weight:600; }
+  .alert.red { background:#fdecea; color:var(--merah); border:2px solid var(--merah); }
+  .alert.green { background:#e9f7ee; color:var(--hijau); }
+  .alert.yellow { background:#fdf6e3; color:var(--kuning); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="head">
     <h1>📱 Cek iPhone Gadai</h1>
-    <div class="sub">DRPE iOS v0.1 (Fase I1 — skeleton) • tanpa install, tidak menyimpan data apa pun</div>
+    <div class="sub">DRPE iOS v0.2 (Fase I2) • tanpa install • tidak menyimpan data</div>
   </div>
   <div id="app"></div>
 </div>
 <script>
 'use strict';
-// ===== Konfigurasi (tanpa rahasia — token datang dari QR) =====
 var RELAY = 'https://rtfhuwijafxzlauulscg.supabase.co/functions/v1/submit-ios';
-
 var qs = new URLSearchParams(location.search);
 var RID = qs.get('r') || '';
 var ST = qs.get('st') || '';
 var app = document.getElementById('app');
 
-function el(html) { var d = document.createElement('div'); d.innerHTML = html; return d; }
+// ===== Sesi (hanya di memori — tidak ada penyimpanan persisten) =====
+var S = {
+  pwaIdentity: {},      // is_clone, ua, gpu, screen, dpr, touch, fps, model_match...
+  deviceIdentity: {},   // model_claimed dipilih penaksir
+  settingsChecks: {},   // wizard Fase I4
+  guidedTests: {},      // tes fisik Fase I3
+  guidedNotes: {},
+  guidedEvidence: {}
+};
+
+// ===== Tabel spek iPhone (pts x DPR; spek iPhone TETAP — bukan spec-learn) =====
+// promotion=120Hz; tt=True Tone; fid=Face ID (false=Touch ID); cyc=cycle count tampil di Settings (iPhone 15+)
+var SPEC = {
+  'iPhone 6s / 7 / 8 / SE2 / SE3': { w:375, h:667, d:2, promo:false, tt:true,  fid:false, cyc:false },
+  'iPhone 6s+ / 7+ / 8 Plus':      { w:414, h:736, d:3, promo:false, tt:true,  fid:false, cyc:false },
+  'iPhone X / XS / 11 Pro':        { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 12 mini / 13 mini':      { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone XR / 11':                { w:414, h:896, d:2, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone XS Max / 11 Pro Max':    { w:414, h:896, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 12 / 12 Pro / 13 / 14':  { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13 Pro':                 { w:390, h:844, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 12/13 Pro Max / 14 Plus':{ w:428, h:926, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13 Pro Max':             { w:428, h:926, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 14 Pro / 15 Pro / 16':   { w:393, h:852, d:3, promo:null,  tt:true,  fid:true,  cyc:null },
+  'iPhone 15':                     { w:393, h:852, d:3, promo:false, tt:true,  fid:true,  cyc:true },
+  'iPhone 14 Pro Max / 15 Pro Max':{ w:430, h:932, d:3, promo:true,  tt:true,  fid:true,  cyc:null },
+  'iPhone 15 Plus / 16 Plus':      { w:430, h:932, d:3, promo:false, tt:true,  fid:true,  cyc:true },
+  'iPhone 16 Pro':                 { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true },
+  'iPhone 16 Pro Max':             { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true }
+};
+// catatan: promo:null = grup campuran (sebagian ProMotion) → mismatch resolusi tetap valid,
+// pengecekan ProMotion memakai nilai per-model klaim di bawah.
+var PROMO_BY_CLAIM = {
+  'iPhone 13 Pro':true, 'iPhone 13 Pro Max':true, 'iPhone 14 Pro / 15 Pro / 16':null,
+  'iPhone 14 Pro Max / 15 Pro Max':null, 'iPhone 16 Pro':true, 'iPhone 16 Pro Max':true
+};
+
+function el(html) { var d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild || d; }
+function show() { app.innerHTML = ''; for (var i = 0; i < arguments.length; i++) app.appendChild(arguments[i]); window.scrollTo(0, 0); }
 function api(body) {
-  return fetch(RELAY, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(function (r) { return r.json(); });
+  return fetch(RELAY, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json(); });
 }
 
+// ===== Identitas otomatis + deteksi clone =====
+function bacaGpu() {
+  try {
+    var c = document.createElement('canvas');
+    var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    if (!gl) return null;
+    var ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : (gl.getParameter(gl.RENDERER) || null);
+  } catch (e) { return null; }
+}
+function ukurFps() {
+  // rAF tidak jalan bila halaman ter-background → fallback timeout 3 dtk = null (jujur tak terukur)
+  return new Promise(function (res) {
+    var selesai = false;
+    function done(v) { if (!selesai) { selesai = true; res(v); } }
+    setTimeout(function () { done(null); }, 3000);
+    var frames = 0, t0 = null;
+    function tick(t) {
+      if (t0 === null) t0 = t;
+      frames++;
+      if (t - t0 < 1500) requestAnimationFrame(tick);
+      else done(Math.round(frames / ((t - t0) / 1000)));
+    }
+    try { requestAnimationFrame(tick); } catch (e) { done(null); }
+  });
+}
+function deteksiIdentitas() {
+  var ua = navigator.userAgent || '';
+  var gpu = bacaGpu();
+  var isIphoneUa = /iPhone/.test(ua);
+  var isAppleGpu = gpu ? /apple/i.test(String(gpu)) : null;
+  // clone = UA bukan iPhone ATAU GPU jelas bukan Apple (Mali/Adreno/PowerVR dll)
+  var gpuNonApple = gpu !== null && !/apple/i.test(String(gpu));
+  var isClone = !isIphoneUa || gpuNonApple;
+  return ukurFps().then(function (fps) {
+    S.pwaIdentity = {
+      is_clone: isClone,
+      ua: ua.slice(0, 160),
+      gpu: gpu ? String(gpu).slice(0, 80) : null,
+      apple_gpu: isAppleGpu,
+      screen_w_pts: screen.width, screen_h_pts: screen.height,
+      dpr: window.devicePixelRatio || null,
+      max_touch_points: navigator.maxTouchPoints || null,
+      fps_measured: fps,
+      ios_version_ua: (ua.match(/OS (\d+_\d+)/) || [])[1] || null
+    };
+    return S.pwaIdentity;
+  });
+}
+function cocokkanModel(claimKey) {
+  var sp = SPEC[claimKey]; if (!sp) return null;
+  var pid = S.pwaIdentity;
+  var w = Math.min(pid.screen_w_pts, pid.screen_h_pts);
+  var h = Math.max(pid.screen_w_pts, pid.screen_h_pts);
+  var resMatch = (w === sp.w && h === sp.h && pid.dpr === sp.d);
+  var promoExpected = PROMO_BY_CLAIM.hasOwnProperty(claimKey) ? PROMO_BY_CLAIM[claimKey] : sp.promo;
+  var fpsOk = pid.fps_measured !== null && pid.fps_measured !== undefined;
+  var promoMeasured = fpsOk && pid.fps_measured >= 100; // 120Hz terukur ~110-120; 60Hz ~58-62
+  var promoStatus = 'NA';
+  if (!fpsOk) promoStatus = (promoExpected === true) ? 'TIDAK_TERUKUR' : 'NA';
+  else if (promoExpected === true) promoStatus = promoMeasured ? 'OK' : 'MISMATCH'; // Low Power Mode bisa membatasi 60
+  else if (promoExpected === false) promoStatus = 'NA';
+  else promoStatus = promoMeasured ? 'TERUKUR_120' : 'TERUKUR_60';
+  return { resolution_match: resMatch, expected: sp, promo_expected: promoExpected,
+           promo_measured_fps: pid.fps_measured, promo_status: promoStatus };
+}
+
+// ===== Layar-layar =====
 function layarAwal() {
   if (!RID || !ST) {
-    app.appendChild(el(
-      '<div class="card center"><p class="err">Link tidak lengkap.</p>' +
-      '<p class="muted">Halaman ini harus dibuka dengan scan QR dari HP penaksir ' +
-      '(menu Mulai Pemeriksaan → iPhone).</p></div>'));
+    show(el('<div class="card center"><p class="err">Link tidak lengkap.</p>' +
+      '<p class="muted">Buka lewat scan QR dari HP penaksir (Mulai Pemeriksaan → iPhone).</p></div>'));
     return;
   }
-  app.appendChild(el('<div class="card center"><div class="spin"></div><p>Menghubungi server…</p></div>'));
-  api({ action: 'config', report_id: RID, submit_token: ST }).then(function (j) {
-    app.innerHTML = '';
+  show(el('<div class="card center"><div class="spin"></div><p>Menghubungi server…</p></div>'));
+  api({ action:'config', report_id:RID, submit_token:ST }).then(function (j) {
     if (!j.ok) {
-      app.appendChild(el('<div class="card center"><p class="err">⚠️ ' + (j.error || 'gagal') + '</p>' +
+      show(el('<div class="card center"><p class="err">⚠️ ' + (j.error || 'gagal') + '</p>' +
         '<p class="muted">Minta penaksir scan ulang / buat pemeriksaan baru.</p></div>'));
       return;
     }
     if (j.status !== 'DRAFT') {
-      app.appendChild(el('<div class="card center"><p class="err">Pemeriksaan ini sudah dikirim/final.</p></div>'));
+      show(el('<div class="card center"><p class="err">Pemeriksaan ini sudah dikirim/final.</p></div>'));
       return;
     }
-    app.appendChild(el(
-      '<div class="card center"><p class="ok">✓ Terhubung ke ' + (j.outlet || 'outlet') + '</p>' +
+    var c = el('<div class="card center"><p class="ok">✓ Terhubung ke ' + (j.outlet || 'outlet') + '</p>' +
       '<p>Report: <span class="rid">' + RID + '</span></p>' +
-      '<p class="muted">Rangkaian tes iPhone dibangun di Fase I2–I4 — ini skeleton pairing.</p>' +
-      '<button class="btn" id="mulai">▶ MULAI TES (segera hadir)</button></div>'));
-    document.getElementById('mulai').onclick = function () {
-      alert('Rangkaian tes dibangun di fase berikutnya.');
-    };
+      '<button class="btn" id="mulai">▶ MULAI PEMERIKSAAN</button>' +
+      '<p class="muted">±5 menit. Tidak ada data pribadi yang diambil dari iPhone ini.</p></div>');
+    show(c);
+    c.querySelector('#mulai').onclick = layarIdentitas;
   }).catch(function (e) {
-    app.innerHTML = '';
-    app.appendChild(el('<div class="card center"><p class="err">Tidak bisa terhubung: ' + e + '</p>' +
+    show(el('<div class="card center"><p class="err">Tidak bisa terhubung: ' + e + '</p>' +
       '<p class="muted">Pastikan iPhone tersambung internet (hotspot HP penaksir / WiFi).</p>' +
       '<button class="btn" onclick="location.reload()">COBA LAGI</button></div>'));
   });
 }
+
+function layarIdentitas() {
+  show(el('<div class="card center"><div class="spin"></div><p>Membaca identitas perangkat…<br>' +
+    '<span class="muted">(±2 detik — mengukur layar & chip)</span></p></div>'));
+  deteksiIdentitas().then(function (pid) {
+    if (pid.is_clone) {
+      // CLONE — berhenti dgn peringatan besar; tetap bisa submit temuan
+      var c = el('<div>' +
+        '<div class="alert red center" style="font-size:18px">🚨 BUKAN iPHONE ASLI<br>' +
+        '<span style="font-size:14px;font-weight:400">Perangkat ini terdeteksi clone/HDC ' +
+        '(sistem bukan iOS' + (pid.gpu ? ' • chip: ' + pid.gpu : '') + ')</span></div>' +
+        '<div class="card"><div class="row"><span>Sistem</span><b>' + (/iPhone/.test(pid.ua) ? 'mengaku iPhone' : 'BUKAN iOS') + '</b></div>' +
+        '<div class="row"><span>GPU</span><b>' + (pid.gpu || '—') + '</b></div></div>' +
+        '<button class="btn" id="kirim">KIRIM TEMUAN KE PENAKSIR</button></div>');
+      show(c);
+      c.querySelector('#kirim').onclick = function () { kirimHasil(true); };
+      return;
+    }
+    layarPilihModel();
+  });
+}
+
+function layarPilihModel() {
+  var opts = '<option value="">— pilih model —</option>';
+  for (var k in SPEC) opts += '<option value="' + k + '">' + k + '</option>';
+  var pid = S.pwaIdentity;
+  var c = el('<div>' +
+    '<div class="alert green center">✓ iPhone asli terdeteksi (chip Apple)</div>' +
+    '<div class="card"><b>Model yang diklaim penjual/nasabah:</b><br><br>' +
+    '<select id="model">' + opts + '</select>' +
+    '<div id="hasil"></div>' +
+    '<button class="btn" id="lanjut" disabled>LANJUT</button></div>' +
+    '<div class="card muted">Terbaca: layar ' + Math.min(pid.screen_w_pts,pid.screen_h_pts) + '×' +
+    Math.max(pid.screen_w_pts,pid.screen_h_pts) + ' @' + pid.dpr + 'x • ' + pid.fps_measured + ' fps • ' +
+    (pid.gpu || 'GPU —') + '</div></div>');
+  show(c);
+  var sel = c.querySelector('#model'), hasil = c.querySelector('#hasil'), btn = c.querySelector('#lanjut');
+  sel.onchange = function () {
+    var key = sel.value;
+    if (!key) { btn.disabled = true; hasil.innerHTML = ''; return; }
+    var m = cocokkanModel(key);
+    S.deviceIdentity.model_claimed = key;
+    S.pwaIdentity.model_check = m;
+    var html = '';
+    if (m.resolution_match) html += '<div class="alert green">🟢 Layar cocok dgn spek ' + key + '</div>';
+    else html += '<div class="alert red">🔴 Layar TIDAK cocok dgn spek model ini (' +
+      m.expected.w + '×' + m.expected.h + ' @' + m.expected.d + 'x) — model palsu / layar diganti?</div>';
+    if (m.promo_expected === true) {
+      if (m.promo_status === 'OK') html += '<div class="alert green">🟢 ProMotion 120Hz terukur (' + m.promo_measured_fps + ' fps) — layar asli</div>';
+      else if (m.promo_status === 'TIDAK_TERUKUR') html += '<div class="alert yellow">🟡 Refresh rate tidak terukur. ' +
+        '<a href="#" id="ulang">Ukur ulang</a> (jaga halaman tetap terbuka).</div>';
+      else html += '<div class="alert yellow">🟡 ProMotion TIDAK terukur 120Hz (' + m.promo_measured_fps + ' fps). ' +
+        'Matikan Low Power Mode (Settings→Battery) lalu <a href="#" id="ulang">ukur ulang</a>. ' +
+        'Tetap 60 = layar kemungkinan diganti panel non-ori.</div>';
+    }
+    hasil.innerHTML = html;
+    var ulang = hasil.querySelector('#ulang');
+    if (ulang) ulang.onclick = function (ev) { ev.preventDefault(); ukurFps().then(function (f) {
+      S.pwaIdentity.fps_measured = f; sel.onchange(); }); };
+    btn.disabled = false;
+  };
+  btn.onclick = layarTesFisik;
+}
+
+// ===== Placeholder Fase I3 & I4 =====
+function layarTesFisik() {
+  var c = el('<div class="card center"><p class="ok">Identitas tersimpan.</p>' +
+    '<p class="muted">Tes fisik (Fase I3) & wizard Settings (Fase I4) menyusul — ' +
+    'untuk sekarang kirim hasil identitas.</p>' +
+    '<button class="btn" id="kirim">KIRIM HASIL SEMENTARA</button></div>');
+  show(c);
+  c.querySelector('#kirim').onclick = function () { kirimHasil(false); };
+}
+
+function kirimHasil(cloneOnly) {
+  show(el('<div class="card center"><div class="spin"></div><p>Mengirim hasil…</p></div>'));
+  var results = {
+    pwa_identity: S.pwaIdentity,
+    device_identity: S.deviceIdentity,
+    settings_checks: S.settingsChecks,
+    guided_tests: S.guidedTests,
+    guided_test_notes: S.guidedNotes,
+    guided_evidence: S.guidedEvidence
+  };
+  var coba = 0;
+  function kirim() {
+    coba++;
+    api({ action:'tests', report_id:RID, submit_token:ST, results:results }).then(function (j) {
+      if (j.ok) {
+        show(el('<div class="card center"><p style="font-size:48px;margin:8px">✅</p>' +
+          '<p class="ok" style="font-size:18px">HASIL TERKIRIM</p>' +
+          '<p class="muted">Lanjutkan di HP penaksir. Tab ini boleh ditutup — tidak ada data tersimpan di iPhone.</p></div>'));
+      } else if (coba < 3) { setTimeout(kirim, 2000); }
+      else {
+        show(el('<div class="card center"><p class="err">Gagal mengirim: ' + (j.error || '?') + '</p>' +
+          '<button class="btn" onclick="location.reload()">ULANGI DARI AWAL</button></div>'));
+      }
+    }).catch(function () {
+      if (coba < 3) setTimeout(kirim, 2000);
+      else show(el('<div class="card center"><p class="err">Tidak bisa terhubung. Cek internet lalu coba lagi.</p>' +
+        '<button class="btn" id="re">COBA KIRIM LAGI</button></div>'));
+    });
+  }
+  kirim();
+}
+
 layarAwal();
 </script>
 </body>
