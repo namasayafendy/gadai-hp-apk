@@ -257,12 +257,292 @@ function layarPilihModel() {
   btn.onclick = layarTesFisik;
 }
 
-// ===== Placeholder Fase I3 & I4 =====
+// ============================================================
+// FASE I3 — TES FISIK (verdict + bukti, pola Android)
+// ============================================================
+var RUSAK_PRESET = {
+  screen: ['ada garis','dead pixel','whitespot/shadow','burn-in','warna pudar','flicker'],
+  touchscreen: ['dead zone','kurang responsif','meleset'],
+  ghost_touch: ['gerak sendiri'],
+  loudspeaker: ['tidak bunyi','suara pecah','kecil sekali'],
+  mic: ['tidak merekam','suara kresek','kecil sekali'],
+  camera_front: ['tidak nyala','buram/jamur','bintik hitam','fokus rusak'],
+  camera_back: ['tidak nyala','buram/jamur','bintik hitam','fokus rusak'],
+  button_volup: ['tidak berfungsi','keras/macet'],
+  button_voldown: ['tidak berfungsi','keras/macet'],
+  button_power: ['tidak berfungsi','keras/macet'],
+  silent_switch: ['tidak berfungsi','hilang/patah'],
+  led_flash: ['tidak nyala'],
+  motion_sensors: ['gerak tidak terdeteksi'],
+  vibration: ['tidak bergetar','lemah sekali']
+};
+var LEWATI_PRESET = ['tidak bisa diuji (rusak parah)','nasabah menolak','kendala waktu','hardware tidak ada'];
+
+function catat(key, status, note, evidence, mulai, suspicious) {
+  S.guidedTests[key] = status;
+  if (note) S.guidedNotes[key] = note;
+  S.guidedEvidence[key] = {
+    status: status, evidence: evidence || '',
+    suspicious: !!suspicious,
+    duration_sec: mulai ? Math.round((Date.now() - mulai) / 1000) : null
+  };
+}
+function pilihDariDaftar(judul, daftar, cb) {
+  var html = '<div class="card"><b>' + judul + '</b><br><br>';
+  for (var i = 0; i < daftar.length; i++) html += '<button class="btn sec" data-i="' + i + '">' + daftar[i] + '</button>';
+  html += '</div>';
+  var c = el(html); show(c);
+  var btns = c.querySelectorAll('button');
+  for (var j = 0; j < btns.length; j++) (function (b) { b.onclick = function () { cb(daftar[+b.getAttribute('data-i')]); }; })(btns[j]);
+}
+function verdictBar(key, onDone) {
+  var c = el('<div class="card"><div style="display:flex;gap:8px">' +
+    '<button class="btn vd-ok" style="background:var(--hijau)">✓ BAGUS</button>' +
+    '<button class="btn vd-bad" style="background:var(--merah)">✗ RUSAK</button></div>' +
+    '<button class="btn sec vd-skip">Lewati tes ini</button></div>');
+  c.querySelector('.vd-ok').onclick = function () { onDone('BAGUS', null); };
+  c.querySelector('.vd-bad').onclick = function () { pilihDariDaftar('Apa kerusakannya?', RUSAK_PRESET[key] || ['rusak'], function (s) { onDone('RUSAK', s); }); };
+  c.querySelector('.vd-skip').onclick = function () { pilihDariDaftar('Alasan dilewati?', LEWATI_PRESET, function (s) { onDone('DILEWATI', s); }); };
+  return c;
+}
+
+// ---- 1. Tes layar 5 warna ----
+function tesLayar(next) {
+  var warna = [['#ffffff','PUTIH — cari whitespot/noda'],['#ff0000','MERAH — cari dead pixel'],['#00ff00','HIJAU — cari dead pixel'],['#0000ff','BIRU — cari dead pixel'],['#000000','HITAM — OLED asli = hitam pekat; cari backlight bocor']];
+  var i = 0, mulai = Date.now();
+  var ov = el('<div style="position:fixed;inset:0;z-index:99" id="ov"><div id="lbl" style="position:absolute;top:20px;left:16px;right:16px;background:rgba(40,40,40,.8);color:#fff;padding:10px;border-radius:8px;font-size:14px;text-align:center"></div><div id="vb" style="position:absolute;bottom:16px;left:16px;right:16px;display:none"></div></div>');
+  document.body.appendChild(ov);
+  var lbl = ov.querySelector('#lbl');
+  function tampil() { ov.style.background = warna[i][0]; lbl.textContent = 'TES LAYAR ' + (i+1) + '/5: ' + warna[i][1] + ' (ketuk utk lanjut)'; }
+  ov.onclick = function () {
+    if (i < warna.length - 1) { i++; tampil(); }
+    else {
+      ov.onclick = null;
+      lbl.textContent = 'Semua warna ditampilkan — beri penilaian';
+      var vb = ov.querySelector('#vb'); vb.style.display = 'block';
+      vb.appendChild(verdictBar('screen', function (st, note) {
+        var dur = Math.round((Date.now() - mulai) / 1000);
+        catat('screen', st, note, '5 warna ditampilkan, ' + dur + ' dtk', mulai, st === 'BAGUS' && dur < 5);
+        document.body.removeChild(ov); next();
+      }));
+    }
+  };
+  tampil();
+}
+
+// ---- 2. Touchscreen matrix + multitouch + ghost ----
+function tesTouch(next) {
+  var mulai = Date.now();
+  var ov = el('<div style="position:fixed;inset:0;z-index:99;background:#222;touch-action:none" id="ov">' +
+    '<canvas id="cv" style="position:absolute;inset:0"></canvas>' +
+    '<div id="lbl" style="position:absolute;top:16px;left:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;padding:8px;border-radius:8px;font-size:13px;text-align:center;pointer-events:none"></div>' +
+    '<div id="vb" style="position:absolute;bottom:12px;left:12px;right:12px;display:none"></div></div>');
+  document.body.appendChild(ov);
+  var cv = ov.querySelector('#cv'), lbl = ov.querySelector('#lbl');
+  cv.width = innerWidth; cv.height = innerHeight;
+  var g = cv.getContext('2d');
+  var cell = 40, cols = Math.ceil(innerWidth / cell), rows = Math.ceil(innerHeight / cell);
+  var painted = {}, total = cols * rows, count = 0, maxTouch = 0;
+  g.fillStyle = '#333';
+  for (var r = 0; r < rows; r++) for (var cc = 0; cc < cols; cc++) g.fillRect(cc*cell+1, r*cell+1, cell-2, cell-2);
+  function mark(x, y) {
+    var cx = Math.floor(x / cell), cy = Math.floor(y / cell), k = cy * cols + cx;
+    if (!painted[k]) { painted[k] = 1; count++; g.fillStyle = '#1b8f3a'; g.fillRect(cx*cell+1, cy*cell+1, cell-2, cell-2); upd(); }
+  }
+  function pct() { return Math.round(count * 100 / total); }
+  function upd() {
+    lbl.textContent = 'USAP SELURUH LAYAR (' + pct() + '%) • sesekali 3-5 jari (multi-touch: ' + maxTouch + ')';
+    if (pct() >= 50) ov.querySelector('#vb').style.display = 'block';
+  }
+  function onT(e) {
+    e.preventDefault();
+    if (e.touches && e.touches.length > maxTouch) maxTouch = e.touches.length;
+    var ts = e.touches || [];
+    for (var i = 0; i < ts.length; i++) mark(ts[i].clientX, ts[i].clientY);
+    if (e.clientX !== undefined) mark(e.clientX, e.clientY); // mouse utk uji desktop
+  }
+  ov.addEventListener('touchstart', onT, {passive:false});
+  ov.addEventListener('touchmove', onT, {passive:false});
+  ov.addEventListener('mousemove', function (e) { if (e.buttons) onT(e); });
+  upd();
+  ov.querySelector('#vb').appendChild(verdictBar('touchscreen', function (st, note) {
+    S.pwaIdentity.max_multitouch_points = maxTouch || null;
+    catat('touchscreen', st, note, pct() + '% area terusap, ' + maxTouch + ' titik multi-touch', mulai, st === 'BAGUS' && pct() < 85);
+    document.body.removeChild(ov);
+    tesGhost(next);
+  }));
+}
+function tesGhost(next) {
+  var detik = 10, events = 0;
+  var ov = el('<div style="position:fixed;inset:0;z-index:99;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px" id="ov"><div><h2>TES GHOST TOUCH</h2><p id="t" style="font-size:40px;margin:8px">10</p><p>LETAKKAN iPHONE, JANGAN DISENTUH</p><p id="e" class="warn"></p></div></div>');
+  document.body.appendChild(ov);
+  function onT(e) { e.preventDefault(); events++; ov.querySelector('#e').textContent = 'Sentuhan terdeteksi: ' + events; }
+  ov.addEventListener('touchstart', onT, {passive:false});
+  var iv = setInterval(function () {
+    detik--; ov.querySelector('#t').textContent = detik;
+    if (detik <= 0) {
+      clearInterval(iv); document.body.removeChild(ov);
+      catat('ghost_touch', events > 0 ? 'RUSAK' : 'BAGUS', events > 0 ? 'gerak sendiri' : null,
+        events + ' sentuhan hantu dlm 10 dtk', Date.now() - 10000, false);
+      next();
+    }
+  }, 1000);
+}
+
+// ---- 3. Tombol fisik + senter (konfirmasi manual — Safari tak bisa cegat) ----
+function tesTombol(next) {
+  var mulai = Date.now();
+  var items = [
+    ['button_volup','Tombol Volume ATAS — tekan, indikator volume muncul?'],
+    ['button_voldown','Tombol Volume BAWAH — tekan, indikator muncul?'],
+    ['button_power','Tombol Power/Samping — tekan sekali, layar mati lalu nyalakan lagi?'],
+    ['silent_switch','Saklar silent/Action button — geser, mode berubah (ada getar)?'],
+    ['vibration','Getar terasa saat saklar silent digeser / saat telepon?'],
+    ['led_flash','Senter: buka Control Center (usap dari pojok kanan atas) → nyalakan senter. Nyala terang?']
+  ];
+  var i = 0;
+  function satu() {
+    if (i >= items.length) { next(); return; }
+    var key = items[i][0];
+    var c = el('<div><div class="card"><b>Tes ' + (i+1) + '/' + items.length + '</b><p style="font-size:16px">' + items[i][1] + '</p><p class="muted">Konfirmasi manual — lakukan lalu pilih hasil.</p></div></div>');
+    c.appendChild(verdictBar(key, function (st, note) {
+      catat(key, st, note, 'konfirmasi manual penaksir', mulai, false);
+      i++; satu();
+    }));
+    show(c);
+  }
+  satu();
+}
+
+// ---- 4. Audio: loopback objektif + rekam-putar ----
+function goertzel(buf, rate, freq) {
+  var k = Math.round(buf.length * freq / rate), w = 2 * Math.PI * k / buf.length, c = 2 * Math.cos(w);
+  var s0, s1 = 0, s2 = 0;
+  for (var i = 0; i < buf.length; i++) { s0 = buf[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+  return (s1 * s1 + s2 * s2 - c * s1 * s2) / buf.length;
+}
+function tesAudio(next) {
+  var mulai = Date.now();
+  var c = el('<div><div class="card center"><b>TES SPEAKER + MIC (otomatis)</b>' +
+    '<p class="muted">Nada akan dibunyikan dan mic ikut mendengarkan (bukti otomatis). Izinkan akses mikrofon bila diminta.</p>' +
+    '<button class="btn" id="go">▶ MAINKAN NADA & DETEKSI</button><div id="hasil"></div></div><div id="vb"></div></div>');
+  show(c);
+  var det = null, rms = null;
+  c.querySelector('#go').onclick = function () {
+    c.querySelector('#hasil').innerHTML = '<div class="spin"></div>';
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var ctx = new AC();
+      var osc = ctx.createOscillator(); osc.frequency.value = 1000;
+      var gain = ctx.createGain(); gain.gain.value = 0.6;
+      osc.connect(gain); gain.connect(ctx.destination);
+      var src = ctx.createMediaStreamSource(stream);
+      var proc = ctx.createScriptProcessor(4096, 1, 1);
+      var samples = [];
+      proc.onaudioprocess = function (ev) {
+        var d = ev.inputBuffer.getChannelData(0);
+        for (var i = 0; i < d.length; i += 4) samples.push(d[i]);
+      };
+      src.connect(proc); proc.connect(ctx.destination);
+      osc.start();
+      setTimeout(function () {
+        osc.stop(); proc.disconnect(); src.disconnect();
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        var buf = new Float32Array(samples.slice(0, 30000));
+        var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        rms = buf.length ? Math.sqrt(sum / buf.length) : 0;
+        var p1k = goertzel(buf, ctx.sampleRate / 4, 1000);
+        var pref = goertzel(buf, ctx.sampleRate / 4, 1500);
+        det = buf.length > 0 && rms > 0.003 && p1k > pref * 6;
+        ctx.close();
+        c.querySelector('#hasil').innerHTML = det
+          ? '<div class="alert green">🟢 Nada TERDETEKSI mic — speaker & mic bekerja</div>'
+          : '<div class="alert yellow">🟡 Nada tidak terdeteksi (speaker mati / mic mati / izin ditolak / berisik) — nilai dgn telinga</div>';
+      }, 1800);
+    }).catch(function (e) {
+      det = null;
+      c.querySelector('#hasil').innerHTML = '<div class="alert yellow">🟡 Mic tidak bisa diakses (' + e.name + ') — nilai dgn telinga</div>';
+    });
+  };
+  c.querySelector('#vb').appendChild(verdictBar('loudspeaker', function (st, note) {
+    catat('loudspeaker', st, note, det === null ? 'loopback tidak jalan' : ('loopback 1kHz ' + (det ? 'TERDETEKSI' : 'tidak terdeteksi') + ' (rms ' + (rms !== null ? rms.toFixed(4) : '-') + ')'), mulai, st === 'BAGUS' && det !== true);
+    catat('mic', st === 'BAGUS' && det === true ? 'BAGUS' : st, st !== 'BAGUS' ? note : null, det === true ? 'terbukti via loopback' : 'mengikuti verdict speaker', mulai, det !== true);
+    next();
+  }));
+}
+
+// ---- 5. Kamera depan & belakang ----
+function tesKamera(facing, key, judul, next) {
+  var mulai = Date.now();
+  var c = el('<div><div class="card center"><b>' + judul + '</b><br><br>' +
+    '<video id="v" autoplay playsinline style="width:100%;border-radius:10px;background:#000;min-height:200px"></video>' +
+    '<div id="hasil"></div></div><div id="vb"></div></div>');
+  show(c);
+  var jalan = false;
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } }).then(function (stream) {
+    c.querySelector('#v').srcObject = stream; jalan = true;
+    c._stream = stream;
+  }).catch(function (e) {
+    c.querySelector('#hasil').innerHTML = '<div class="alert yellow">🟡 Kamera tidak bisa dibuka (' + e.name + ')</div>';
+  });
+  c.querySelector('#vb').appendChild(verdictBar(key, function (st, note) {
+    if (c._stream) c._stream.getTracks().forEach(function (t) { t.stop(); });
+    catat(key, st, note, jalan ? 'preview tampil' : 'preview GAGAL', mulai, st === 'BAGUS' && !jalan);
+    next();
+  }));
+}
+
+// ---- 6. Sensor gerak (DeviceMotion, perlu izin iOS) ----
+function tesMotion(next) {
+  var mulai = Date.now();
+  var c = el('<div><div class="card center"><b>TES SENSOR GERAK</b>' +
+    '<p>Goyang & putar iPhone beberapa kali.</p><p id="st" class="muted">Menunggu izin sensor…</p></div><div id="vb"></div></div>');
+  show(c);
+  var maxAcc = 0, pasang = function () {
+    window.addEventListener('devicemotion', function (e) {
+      var a = e.accelerationIncludingGravity || e.acceleration;
+      if (!a) return;
+      var m = Math.sqrt((a.x||0)*(a.x||0) + (a.y||0)*(a.y||0) + (a.z||0)*(a.z||0));
+      if (m > maxAcc) maxAcc = m;
+      var ok = maxAcc > 18; // diam ~9.8; goyang > 18
+      c.querySelector('#st').innerHTML = ok ? '<span class="ok">🟢 Gerak terdeteksi (' + maxAcc.toFixed(1) + ')</span>' : 'terbaca: ' + maxAcc.toFixed(1) + ' — goyang lebih kuat';
+    });
+  };
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().then(function (r) {
+      if (r === 'granted') pasang(); else c.querySelector('#st').textContent = 'izin sensor ditolak';
+    }).catch(function () { c.querySelector('#st').textContent = 'izin sensor gagal'; });
+  } else { pasang(); }
+  c.querySelector('#vb').appendChild(verdictBar('motion_sensors', function (st, note) {
+    catat('motion_sensors', st, note, 'akselerasi maks ' + maxAcc.toFixed(1), mulai, st === 'BAGUS' && maxAcc < 18);
+    next();
+  }));
+}
+
+// ---- Orkestrator tes fisik ----
 function layarTesFisik() {
-  var c = el('<div class="card center"><p class="ok">Identitas tersimpan.</p>' +
-    '<p class="muted">Tes fisik (Fase I3) & wizard Settings (Fase I4) menyusul — ' +
-    'untuk sekarang kirim hasil identitas.</p>' +
-    '<button class="btn" id="kirim">KIRIM HASIL SEMENTARA</button></div>');
+  var c = el('<div class="card center"><b>TES FISIK (' + '7 langkah)</b>' +
+    '<p class="muted">Layar → touchscreen+ghost → tombol & senter → speaker/mic → kamera → sensor gerak.</p>' +
+    '<button class="btn" id="go">▶ MULAI TES FISIK</button></div>');
+  show(c);
+  c.querySelector('#go').onclick = function () {
+    tesLayar(function () { tesTouch(function () { tesTombol(function () {
+      tesAudio(function () {
+        tesKamera('environment', 'camera_back', 'KAMERA BELAKANG — arahkan, cek jernih/fokus', function () {
+          tesKamera('user', 'camera_front', 'KAMERA DEPAN — cek jernih', function () {
+            tesMotion(layarWizard);
+          });
+        });
+      });
+    }); }); });
+  };
+}
+
+// ===== Placeholder Fase I4 =====
+function layarWizard() {
+  var c = el('<div class="card center"><p class="ok">Tes fisik selesai.</p>' +
+    '<p class="muted">Wizard Settings (Fase I4) menyusul — kirim hasil sekarang.</p>' +
+    '<button class="btn" id="kirim">KIRIM HASIL</button></div>');
   show(c);
   c.querySelector('#kirim').onclick = function () { kirimHasil(false); };
 }
