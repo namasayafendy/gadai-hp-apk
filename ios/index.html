@@ -40,7 +40,7 @@
 <div class="wrap">
   <div class="head">
     <h1>📱 Cek iPhone Gadai</h1>
-    <div class="sub">DRPE iOS v0.4 • tanpa install • tidak menyimpan data</div>
+    <div class="sub">DRPE iOS v0.5 • tanpa install • tidak menyimpan data</div>
   </div>
   <div id="app"></div>
 </div>
@@ -287,22 +287,31 @@ function catat(key, status, note, evidence, mulai, suspicious) {
     duration_sec: mulai ? Math.round((Date.now() - mulai) / 1000) : null
   };
 }
+// Tombol kebal preventDefault induk (overlay tes): respons di touchend — yang TETAP jalan
+// walau ancestor men-preventDefault touchstart (penyebab tap "ditelan" di iOS Safari) —
+// + fallback click utk desktop. Sekali-tembak (fired guard) supaya tidak dobel.
+function tapBind(btn, fn) {
+  var fired = false;
+  function go(e) { if (fired) return; fired = true; if (e && e.cancelable) e.preventDefault(); fn(); }
+  btn.addEventListener('touchend', go);
+  btn.addEventListener('click', go);
+}
 function pilihDariDaftar(judul, daftar, cb) {
   var html = '<div class="card"><b>' + judul + '</b><br><br>';
   for (var i = 0; i < daftar.length; i++) html += '<button class="btn sec" data-i="' + i + '">' + daftar[i] + '</button>';
   html += '</div>';
   var c = el(html); show(c);
   var btns = c.querySelectorAll('button');
-  for (var j = 0; j < btns.length; j++) (function (b) { b.onclick = function () { cb(daftar[+b.getAttribute('data-i')]); }; })(btns[j]);
+  for (var j = 0; j < btns.length; j++) (function (b) { tapBind(b, function () { cb(daftar[+b.getAttribute('data-i')]); }); })(btns[j]);
 }
 function verdictBar(key, onDone) {
   var c = el('<div class="card"><div style="display:flex;gap:8px">' +
     '<button class="btn vd-ok" style="background:var(--hijau)">✓ BAGUS</button>' +
     '<button class="btn vd-bad" style="background:var(--merah)">✗ RUSAK</button></div>' +
     '<button class="btn sec vd-skip">Lewati tes ini</button></div>');
-  c.querySelector('.vd-ok').onclick = function () { onDone('BAGUS', null); };
-  c.querySelector('.vd-bad').onclick = function () { pilihDariDaftar('Apa kerusakannya?', RUSAK_PRESET[key] || ['rusak'], function (s) { onDone('RUSAK', s); }); };
-  c.querySelector('.vd-skip').onclick = function () { pilihDariDaftar('Alasan dilewati?', LEWATI_PRESET, function (s) { onDone('DILEWATI', s); }); };
+  tapBind(c.querySelector('.vd-ok'), function () { onDone('BAGUS', null); });
+  tapBind(c.querySelector('.vd-bad'), function () { pilihDariDaftar('Apa kerusakannya?', RUSAK_PRESET[key] || ['rusak'], function (s) { onDone('RUSAK', s); }); });
+  tapBind(c.querySelector('.vd-skip'), function () { pilihDariDaftar('Alasan dilewati?', LEWATI_PRESET, function (s) { onDone('DILEWATI', s); }); });
   return c;
 }
 
@@ -310,22 +319,27 @@ function verdictBar(key, onDone) {
 function tesLayar(next) {
   var warna = [['#ffffff','PUTIH — cari whitespot/noda'],['#ff0000','MERAH — cari dead pixel'],['#00ff00','HIJAU — cari dead pixel'],['#0000ff','BIRU — cari dead pixel'],['#000000','HITAM — OLED asli = hitam pekat; cari backlight bocor']];
   var i = 0, mulai = Date.now();
-  var ov = el('<div style="position:fixed;inset:0;z-index:99" id="ov"><div id="lbl" style="position:absolute;top:20px;left:16px;right:16px;background:rgba(40,40,40,.8);color:#fff;padding:10px;border-radius:8px;font-size:14px;text-align:center"></div><div id="vb" style="position:absolute;bottom:16px;left:16px;right:16px;display:none"></div></div>');
+  var ov = el('<div style="position:fixed;inset:0;z-index:99" id="ov"><div id="lbl" style="position:absolute;top:20px;left:16px;right:16px;background:rgba(40,40,40,.8);color:#fff;padding:10px;border-radius:8px;font-size:14px;text-align:center"></div></div>');
   document.body.appendChild(ov);
   var lbl = ov.querySelector('#lbl');
-  function tampil() { ov.style.background = warna[i][0]; lbl.textContent = 'TES LAYAR ' + (i+1) + '/5: ' + warna[i][1] + ' (ketuk utk lanjut)'; }
+  function tampil() {
+    ov.style.background = warna[i][0];
+    var suffix = (i < warna.length - 1) ? ' (ketuk utk lanjut)' : ' (ketuk utk SELESAI & nilai)';
+    lbl.textContent = 'TES LAYAR ' + (i+1) + '/5: ' + warna[i][1] + suffix;
+  }
   ov.onclick = function () {
-    if (i < warna.length - 1) { i++; tampil(); }
-    else {
-      ov.onclick = null;
-      lbl.textContent = 'Semua warna ditampilkan — beri penilaian';
-      var vb = ov.querySelector('#vb'); vb.style.display = 'block';
-      vb.appendChild(verdictBar('screen', function (st, note) {
-        var dur = Math.round((Date.now() - mulai) / 1000);
-        catat('screen', st, note, '5 warna ditampilkan, ' + dur + ' dtk', mulai, st === 'BAGUS' && dur < 5);
-        document.body.removeChild(ov); next();
-      }));
-    }
+    if (i < warna.length - 1) { i++; tampil(); return; }
+    // semua warna dilihat -> KELUAR overlay dulu, lalu nilai sbg kartu normal (#app)
+    ov.onclick = null;
+    document.body.removeChild(ov);
+    var dur = Math.round((Date.now() - mulai) / 1000);
+    var card = el('<div><div class="card center"><b>TES LAYAR selesai</b>' +
+      '<p class="muted">5 warna ditampilkan (' + dur + ' dtk). Beri penilaian:</p></div></div>');
+    card.appendChild(verdictBar('screen', function (st, note) {
+      catat('screen', st, note, '5 warna ditampilkan, ' + dur + ' dtk', mulai, st === 'BAGUS' && dur < 5);
+      next();
+    }));
+    show(card);
   };
   tampil();
 }
@@ -336,7 +350,8 @@ function tesTouch(next) {
   var ov = el('<div style="position:fixed;inset:0;z-index:99;background:#222;touch-action:none" id="ov">' +
     '<canvas id="cv" style="position:absolute;inset:0"></canvas>' +
     '<div id="lbl" style="position:absolute;top:16px;left:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;padding:8px;border-radius:8px;font-size:13px;text-align:center;pointer-events:none"></div>' +
-    '<div id="vb" style="position:absolute;bottom:12px;left:12px;right:12px;display:none"></div></div>');
+    '<div id="act" style="position:absolute;bottom:14px;left:12px;right:12px;display:none">' +
+      '<button class="btn" id="selesai">SELESAI — BERI NILAI</button></div></div>');
   document.body.appendChild(ov);
   var cv = ov.querySelector('#cv'), lbl = ov.querySelector('#lbl');
   cv.width = innerWidth; cv.height = innerHeight;
@@ -352,25 +367,33 @@ function tesTouch(next) {
   function pct() { return Math.round(count * 100 / total); }
   function upd() {
     lbl.textContent = 'USAP SELURUH LAYAR (' + pct() + '%) • sesekali 3-5 jari (multi-touch: ' + maxTouch + ')';
-    if (pct() >= 50) ov.querySelector('#vb').style.display = 'block';
+    if (pct() >= 60) ov.querySelector('#act').style.display = 'block';
   }
   function onT(e) {
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     if (e.touches && e.touches.length > maxTouch) maxTouch = e.touches.length;
     var ts = e.touches || [];
     for (var i = 0; i < ts.length; i++) mark(ts[i].clientX, ts[i].clientY);
     if (e.clientX !== undefined) mark(e.clientX, e.clientY); // mouse utk uji desktop
   }
-  ov.addEventListener('touchstart', onT, {passive:false});
-  ov.addEventListener('touchmove', onT, {passive:false});
-  ov.addEventListener('mousemove', function (e) { if (e.buttons) onT(e); });
+  // PENTING: listener swipe di KANVAS saja (bukan ov) → tombol SELESAI (sibling) tetap bisa di-tap.
+  cv.addEventListener('touchstart', onT, {passive:false});
+  cv.addEventListener('touchmove', onT, {passive:false});
+  cv.addEventListener('mousedown', function (e) { onT(e); });
+  cv.addEventListener('mousemove', function (e) { if (e.buttons) onT(e); });
   upd();
-  ov.querySelector('#vb').appendChild(verdictBar('touchscreen', function (st, note) {
-    S.pwaIdentity.max_multitouch_points = maxTouch || null;
-    catat('touchscreen', st, note, pct() + '% area terusap, ' + maxTouch + ' titik multi-touch', mulai, st === 'BAGUS' && pct() < 85);
+  tapBind(ov.querySelector('#selesai'), function () {
+    // KELUAR overlay dulu, lalu nilai sbg kartu normal (#app) — preset RUSAK/Lewati tampil benar.
     document.body.removeChild(ov);
-    tesGhost(next);
-  }));
+    S.pwaIdentity.max_multitouch_points = maxTouch || null;
+    var card = el('<div><div class="card center"><b>TES SENTUH selesai</b>' +
+      '<p class="muted">' + pct() + '% area terusap • multi-touch ' + maxTouch + ' titik. Beri penilaian:</p></div></div>');
+    card.appendChild(verdictBar('touchscreen', function (st, note) {
+      catat('touchscreen', st, note, pct() + '% area terusap, ' + maxTouch + ' titik multi-touch', mulai, st === 'BAGUS' && pct() < 85);
+      tesGhost(next);
+    }));
+    show(card);
+  });
 }
 function tesGhost(next) {
   var detik = 10, events = 0;
