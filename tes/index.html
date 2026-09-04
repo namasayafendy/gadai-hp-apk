@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#1E63D0">
+<title>Cek HP Gadai — Aplikasi Nasabah</title>
+<style>
+  :root { --biru:#1E63D0; --hijau:#1b8f3a; --merah:#c62828; --kuning:#b58900; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,system-ui,Roboto,sans-serif; margin:0; background:#f4f6f8; color:#1a1a1a; }
+  .wrap { max-width:480px; margin:0 auto; padding:16px; min-height:100vh; }
+  .head { text-align:center; padding:8px 0 4px; }
+  .head h1 { font-size:20px; margin:0; color:var(--biru); }
+  .head .sub { font-size:11px; color:#777; }
+  .card { background:#fff; border-radius:12px; padding:16px; margin:10px 0; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .card h2 { font-size:15px; margin:0 0 8px; color:var(--biru); }
+  .btn { display:block; width:100%; padding:15px; border:0; border-radius:12px; font-size:16px; font-weight:600;
+         background:var(--biru); color:#fff; margin:8px 0; text-align:center; text-decoration:none; }
+  .btn.besar { padding:20px 15px; font-size:19px; letter-spacing:.3px; }
+  .btn.sec { background:#e8edf5; color:var(--biru); }
+  .btn:active { opacity:.85; }
+  .center { text-align:center; }
+  .muted { color:#777; font-size:13px; }
+  .kecil { font-size:12px; }
+  a.tautan { color:var(--biru); }
+  .rid { font-family:ui-monospace,monospace; font-size:12px; background:#eef2f7; padding:3px 6px; border-radius:6px; word-break:break-all; }
+  .alert { border-radius:12px; padding:14px; margin:10px 0; font-weight:600; }
+  .alert.red { background:#fdecea; color:var(--merah); border:2px solid var(--merah); }
+  .alert.yellow { background:#fdf6e3; color:var(--kuning); border:2px solid var(--kuning); }
+  .alert .ket { font-weight:400; font-size:13px; color:#555; margin-top:6px; }
+  ol.langkah { padding-left:22px; margin:0; font-size:14px; line-height:1.5; }
+  ol.langkah li { margin:6px 0; }
+  ol.langkah b { color:var(--biru); }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>📱 Cek HP Gadai</h1>
+    <div class="sub">Aceh Gadai Syariah • aplikasi nasabah Android</div>
+  </div>
+
+  <!-- r / st kosong: QR tidak lengkap -->
+  <div id="kosong" class="alert red" hidden>
+    Scan ulang QR dari HP penaksir
+    <div class="ket">Tautan ini tidak membawa kode pemeriksaan. Minta penaksir menampilkan QR lagi, lalu scan dengan kamera HP Anda.</div>
+  </div>
+
+  <!-- iPhone / iPad: jalur berbeda -->
+  <div id="ios" class="alert yellow" hidden>
+    Untuk iPhone, penaksir memakai QR khusus iPhone
+    <div class="ket">Halaman ini hanya untuk HP Android. Minta penaksir menampilkan QR iPhone.</div>
+  </div>
+
+  <div id="utama" hidden>
+    <div id="bukanAndroid" class="muted center" hidden>Halaman ini untuk HP Android nasabah — buka tautan ini di HP Android.</div>
+
+    <div class="card">
+      <a id="btnBuka" class="btn besar" href="#">BUKA APLIKASI CEK HP</a>
+      <div class="muted center kecil">Sudah terpasang? Tekan tombol di atas.</div>
+    </div>
+
+    <div id="belum" class="alert yellow" hidden>
+      Belum terpasang? Download di bawah
+      <div class="ket">Aplikasi belum ada di HP ini. Tekan DOWNLOAD APLIKASI, pasang, lalu kembali ke halaman ini dan tekan BUKA APLIKASI CEK HP.</div>
+    </div>
+
+    <div class="card">
+      <h2>Belum punya aplikasinya?</h2>
+      <a id="btnUnduh" class="btn sec" href="#">DOWNLOAD APLIKASI</a>
+      <div id="unduhKet" class="muted center kecil">±22 MB • Android 64-bit (arm64)</div>
+      <div class="center kecil" style="margin-top:8px">
+        <a id="lnk32" class="tautan" href="#">HP lama (32-bit)? unduh versi arm32</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Cara pakai</h2>
+      <ol class="langkah">
+        <li><b>Download</b> → buka file yang terunduh → tekan <b>Install</b>. Bila HP bertanya soal "sumber tidak dikenal", pilih <b>Izinkan</b>.</li>
+        <li>Kembali ke halaman ini → tekan <b>BUKA APLIKASI CEK HP</b>.</li>
+        <li>Ikuti tes di aplikasi sampai selesai. Setelah selesai, aplikasi boleh dihapus.</li>
+      </ol>
+    </div>
+
+    <div class="center muted kecil" style="margin:14px 0">
+      Report ID: <span id="rid" class="rid"></span><br>
+      Cocokkan dengan yang tertulis di HP penaksir.
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+// Halaman pendaratan QR pemeriksaan Android (nasabah).
+// Tugasnya cuma satu: meneruskan r (report_id) & st (submit_token) ke aplikasi nasabah,
+// atau mengarahkan ke unduhan APK bila aplikasi belum terpasang. Tidak memanggil server apa pun.
+var qs = new URLSearchParams(location.search);
+var RID = (qs.get('r') || '').trim();
+var ST = (qs.get('st') || '').trim();
+var UA = navigator.userAgent || '';
+
+var PKG = 'com.acehgadai.cekhp.nasabah';
+var SKEMA = 'cekhpnasabah';
+var RILIS = 'https://github.com/namasayafendy/gadai-hp-apk/releases/latest/download/';
+var APK64 = RILIS + 'CekHPNasabah.apk';
+var APK32 = RILIS + 'CekHPNasabah-arm32.apk';
+
+function $(id) { return document.getElementById(id); }
+function tampil(id, ya) { $(id).hidden = !ya; }
+
+var isIOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+var isAndroid = /Android/i.test(UA);
+// Chrome asli: memuat 'Chrome/' dan BUKAN browser lain yang ikut menulis Chrome/ di UA-nya
+// (Samsung Internet, Mi Browser, Opera, Edge, WebView '; wv)', browser dalam aplikasi FB/IG/Line).
+var isChrome = /Chrome\//.test(UA) &&
+  !/SamsungBrowser|MiuiBrowser|HeyTap|OppoBrowser|VivoBrowser|HuaweiBrowser|UCBrowser|OPR\/|OPT\/|EdgA|YaBrowser|Brave|DuckDuckGo|FBAN|FBAV|Instagram|Line\/|MicroMessenger|; wv\)/i.test(UA);
+
+// Parameter diteruskan apa adanya ke aplikasi (ter-encode).
+var Q = 'r=' + encodeURIComponent(RID) + '&st=' + encodeURIComponent(ST);
+// URL halaman ini sendiri (tanpa query/hash). Dipakai sebagai fallback Chrome bila aplikasi tidak ada:
+// ditambah dl=1 supaya saat kembali ke sini blok "Belum terpasang" langsung tampil.
+var halamanIni = location.href.split('#')[0].split('?')[0];
+var fallback = halamanIni + '?' + Q + '&dl=1';
+var intentUrl = 'intent://tes?' + Q + '#Intent;scheme=' + SKEMA + ';package=' + PKG +
+  ';S.browser_fallback_url=' + encodeURIComponent(fallback) + ';end';
+var skemaUrl = SKEMA + '://tes?' + Q;
+
+// ===== Deteksi "aplikasi tidak terbuka": bila 1,5 dtk setelah ditekan halaman masih terlihat =====
+var timerBuka = null;
+function batalTimer() { if (timerBuka) { clearTimeout(timerBuka); timerBuka = null; } }
+document.addEventListener('visibilitychange', function () { if (document.hidden) batalTimer(); });
+window.addEventListener('pagehide', batalTimer);
+function mulaiTimer() {
+  batalTimer();
+  timerBuka = setTimeout(function () {
+    timerBuka = null;
+    if (document.visibilityState === 'visible') tampilBelum();
+  }, 1500);
+}
+function tampilBelum() {
+  tampil('belum', true);
+  try { $('belum').scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
+
+function siapkanTombolBuka() {
+  var a = $('btnBuka');
+  if (isChrome) {
+    // Chrome: tautan intent:// — Chrome sendiri yang membuka aplikasi atau lari ke browser_fallback_url.
+    a.href = intentUrl;
+    a.addEventListener('click', function () { mulaiTimer(); });
+  } else {
+    // Browser lain (Samsung Internet, Mi Browser, dsb.): coba skema langsung, lalu pantau 1,5 dtk.
+    a.href = skemaUrl;
+    a.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      mulaiTimer();
+      location.href = skemaUrl;
+    });
+  }
+}
+
+function siapkanUnduhan() {
+  var btn = $('btnUnduh'), lnk = $('lnk32');
+  btn.href = APK64;
+  lnk.href = APK32;
+  // Deteksi arsitektur bila browser menyediakan Client Hints (Chrome Android sering mengembalikan kosong → tetap arm64).
+  try {
+    if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+      navigator.userAgentData.getHighEntropyValues(['architecture', 'bitness']).then(function (d) {
+        if (d && d.architecture === 'arm' && d.bitness === '32') {
+          btn.href = APK32;
+          $('unduhKet').textContent = '±22 MB • terdeteksi HP 32-bit (arm32)';
+          lnk.href = APK64;
+          lnk.textContent = 'Bukan HP lama? unduh versi arm64';
+        }
+      }).catch(function () {});
+    }
+  } catch (e) {}
+}
+
+// ===== Alur =====
+if (isIOS) {
+  tampil('ios', true);
+} else if (!RID || !ST) {
+  tampil('kosong', true);
+} else {
+  tampil('utama', true);
+  $('rid').textContent = RID;
+  siapkanTombolBuka();
+  siapkanUnduhan();
+  if (!isAndroid) tampil('bukanAndroid', true);
+  if (qs.get('dl') === '1') tampilBelum();
+}
+</script>
+</body>
+</html>
