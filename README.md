@@ -1,16 +1,16 @@
 # Cek HP Gadai (DRPE Android) - Aceh Gadai Syariah
 
-Sejak v1.2 (September 2026) ada **DUA aplikasi**:
+Situs publik: **https://cekhp.acehgadaisyariah.com** (GitHub Pages, cabang `gh-pages`, diterbitkan lewat `publish-site.ps1` — sumber ada di cabang `main`).
 
-| Aplikasi | Untuk | Cara dapat |
-|---|---|---|
-| **Cek HP Nasabah** (`CekHPNasabah.apk`, ±25 MB, arm64) | HP nasabah yang mau ditaksir — tanpa PIN, tanpa token, hapus setelah selesai | Scan QR pemeriksaan dari HP penaksir dengan kamera → halaman `tes/` → tombol DOWNLOAD. Link langsung: **https://github.com/namasayafendy/gadai-hp-apk/releases/latest/download/CekHPNasabah.apk** (HP lama 32-bit: `CekHPNasabah-arm32.apk`) |
-| **Cek HP Penaksir** (`CekHPPenaksir.apk`) | HP outlet — PIN, buat pemeriksaan, QR, form, foto | Dibagikan langsung oleh owner (tidak di sini) |
+| Alamat | Isi |
+|---|---|
+| `/tes/?r=&st=` | Landing QR pemeriksaan Android: **BUKA APLIKASI** (deep link `cekhpnasabah://tes`) atau **DOWNLOAD** |
+| `/apk/CekHPNasabah.apk` | Aplikasi **Cek HP Nasabah** (±25 MB, arm64) — HP nasabah, tanpa PIN/token, hapus setelah selesai |
+| `/apk32/CekHPNasabah-arm32.apk` | Versi HP lama 32-bit (±21 MB) |
+| `/ios/` | PWA tes iPhone (tanpa install) |
 
-Halaman di repo ini:
-- `tes/` — landing QR pemeriksaan Android: **BUKA APLIKASI** (deep link `cekhpnasabah://tes?r=&st=`) atau **DOWNLOAD**.
-- `ios/` — PWA tes iPhone (tanpa install).
+Aplikasi **Cek HP Penaksir** (HP outlet; berisi token outlet bersama) TIDAK dipublikasikan di sini — dibagikan langsung oleh owner.
 
-APK nasabah **tidak berisi rahasia apa pun** (tidak ada token/kredensial). Token outlet bersama hanya ada di APK penaksir.
+APK nasabah tidak berisi rahasia apa pun. Sumber kode: repo privat `cek-android`.
 
-**Aturan rilis:** setiap rilis di repo ini WAJIB melampirkan `CekHPNasabah.apk` dan `CekHPNasabah-arm32.apk` — halaman `tes/` memakai link `releases/latest`.
+Cara terbit versi baru: `D:\cek-android\app\build-apk.ps1` → `publish-site.ps1` (menyalin APK dari `D:\cek-android\dist`, menulis ulang `gh-pages` tanpa riwayat).
