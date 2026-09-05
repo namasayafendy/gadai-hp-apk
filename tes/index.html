@@ -105,9 +105,8 @@ var UA = navigator.userAgent || '';
 
 var PKG = 'com.acehgadai.cekhp.nasabah';
 var SKEMA = 'cekhpnasabah';
-var RILIS = 'https://github.com/namasayafendy/gadai-hp-apk/releases/latest/download/';
-var APK64 = RILIS + 'CekHPNasabah.apk';
-var APK32 = RILIS + 'CekHPNasabah-arm32.apk';
+var APK64 = '../apk/';        // alamat pendek → rilis GitHub terbaru (ikut domain kustom)
+var APK32 = '../apk32/';
 
 function $(id) { return document.getElementById(id); }
 function tampil(id, ya) { $(id).hidden = !ya; }
