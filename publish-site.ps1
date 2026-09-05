@@ -29,7 +29,7 @@ Push-Location $site
 try {
   git init -q
   git checkout -q -b gh-pages
-  git add -A
+  git add -A -f   # -f: abaikan gitignore global (mis. *.apk)
   git -c user.name=namasayafendy -c user.email=namasayafendy@gmail.com commit -q -m "situs cekhp $stamp (APK nasabah $mb MB)"
   git push --force $remote gh-pages:gh-pages
 } finally {
