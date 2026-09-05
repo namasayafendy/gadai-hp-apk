@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cek iPhone Gadai</title>
+<style>
+  :root { --biru:#1E63D0; --hijau:#1b8f3a; --merah:#c62828; --kuning:#b58900; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { font-family:-apple-system,system-ui,sans-serif; margin:0; background:#f4f6f8; color:#1a1a1a; }
+  .wrap { max-width:480px; margin:0 auto; padding:16px; min-height:100vh; }
+  .head { text-align:center; padding:8px 0 4px; }
+  .head h1 { font-size:20px; margin:0; color:var(--biru); }
+  .head .sub { font-size:11px; color:#777; }
+  .card { background:#fff; border-radius:12px; padding:16px; margin:10px 0; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .btn { display:block; width:100%; padding:15px; border:0; border-radius:12px; font-size:16px; font-weight:600;
+         background:var(--biru); color:#fff; margin:8px 0; }
+  .btn.sec { background:#e8edf5; color:var(--biru); }
+  .btn:disabled { background:#aaa; }
+  .center { text-align:center; }
+  .muted { color:#777; font-size:13px; }
+  .err { color:var(--merah); font-weight:600; }
+  .ok { color:var(--hijau); font-weight:600; }
+  .warn { color:var(--kuning); font-weight:600; }
+  .rid { font-family:ui-monospace,monospace; font-size:12px; background:#eef2f7; padding:3px 6px; border-radius:6px; }
+  .row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:14px; }
+  .row b { text-align:right; max-width:60%; }
+  .spin { width:28px; height:28px; border:3px solid #ccc; border-top-color:var(--biru); border-radius:50%;
+          margin:14px auto; animation:s 1s linear infinite; }
+  @keyframes s { to { transform:rotate(360deg); } }
+  select { width:100%; padding:12px; font-size:16px; border-radius:10px; border:1px solid #ccc; background:#fff; }
+  .alert { border-radius:12px; padding:14px; margin:10px 0; font-weight:600; }
+  .alert.red { background:#fdecea; color:var(--merah); border:2px solid var(--merah); }
+  .alert.green { background:#e9f7ee; color:var(--hijau); }
+  .alert.yellow { background:#fdf6e3; color:var(--kuning); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>📱 Cek iPhone Gadai</h1>
+    <div class="sub">DRPE iOS v0.5 • tanpa install • tidak menyimpan data</div>
+  </div>
+  <div id="app"></div>
+</div>
+<script>
+'use strict';
+var RELAY = 'https://rtfhuwijafxzlauulscg.supabase.co/functions/v1/submit-ios';
+var qs = new URLSearchParams(location.search);
+var RID = qs.get('r') || '';
+var ST = qs.get('st') || '';
+var app = document.getElementById('app');
+
+// ===== Sesi (hanya di memori — tidak ada penyimpanan persisten) =====
+var S = {
+  pwaIdentity: {},      // is_clone, ua, gpu, screen, dpr, touch, fps, model_match...
+  deviceIdentity: {},   // model_claimed dipilih penaksir
+  settingsChecks: {},   // wizard Fase I4
+  guidedTests: {},      // tes fisik Fase I3
+  guidedNotes: {},
+  guidedEvidence: {}
+};
+
+// ===== Tabel spek iPhone (pts x DPR; spek iPhone TETAP — bukan spec-learn) =====
+// promotion=120Hz; tt=True Tone; fid=Face ID (false=Touch ID); cyc=cycle count tampil di Settings (iPhone 15+)
+var SPEC = {
+  'iPhone 6s / 7 / 8 / SE2 / SE3': { w:375, h:667, d:2, promo:false, tt:null,  fid:false, cyc:false },
+  'iPhone 6s+ / 7+ / 8 Plus':      { w:414, h:736, d:3, promo:false, tt:null,  fid:false, cyc:false },
+  'iPhone X / XS / 11 Pro':        { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 12 mini / 13 mini':      { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone XR / 11':                { w:414, h:896, d:2, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone XS Max / 11 Pro Max':    { w:414, h:896, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 12 / 12 Pro / 13 / 14':  { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13 Pro':                 { w:390, h:844, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 12/13 Pro Max / 14 Plus':{ w:428, h:926, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13 Pro Max':             { w:428, h:926, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 14 Pro / 15 Pro / 16':   { w:393, h:852, d:3, promo:null,  tt:true,  fid:true,  cyc:null },
+  'iPhone 15':                     { w:393, h:852, d:3, promo:false, tt:true,  fid:true,  cyc:true },
+  'iPhone 14 Pro Max / 15 Pro Max':{ w:430, h:932, d:3, promo:true,  tt:true,  fid:true,  cyc:null },
+  'iPhone 15 Plus / 16 Plus':      { w:430, h:932, d:3, promo:false, tt:true,  fid:true,  cyc:true },
+  'iPhone 16 Pro':                 { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true },
+  'iPhone 16 Pro Max':             { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true }
+};
+// catatan: promo:null = grup campuran (sebagian ProMotion) → mismatch resolusi tetap valid,
+// pengecekan ProMotion memakai nilai per-model klaim di bawah.
+var PROMO_BY_CLAIM = {
+  'iPhone 13 Pro':true, 'iPhone 13 Pro Max':true, 'iPhone 14 Pro / 15 Pro / 16':null,
+  'iPhone 14 Pro Max / 15 Pro Max':null, 'iPhone 16 Pro':true, 'iPhone 16 Pro Max':true
+};
+
+function el(html) { var d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild || d; }
+function show() { app.innerHTML = ''; for (var i = 0; i < arguments.length; i++) app.appendChild(arguments[i]); window.scrollTo(0, 0); }
+function api(body) {
+  return fetch(RELAY, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json(); });
+}
+
+// ===== Identitas otomatis + deteksi clone =====
+function bacaGpu() {
+  try {
+    var c = document.createElement('canvas');
+    var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    if (!gl) return null;
+    var ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : (gl.getParameter(gl.RENDERER) || null);
+  } catch (e) { return null; }
+}
+function ukurFps() {
+  // rAF tidak jalan bila halaman ter-background → fallback timeout 3 dtk = null (jujur tak terukur)
+  return new Promise(function (res) {
+    var selesai = false;
+    function done(v) { if (!selesai) { selesai = true; res(v); } }
+    setTimeout(function () { done(null); }, 3000);
+    var frames = 0, t0 = null;
+    function tick(t) {
+      if (t0 === null) t0 = t;
+      frames++;
+      if (t - t0 < 1500) requestAnimationFrame(tick);
+      else done(Math.round(frames / ((t - t0) / 1000)));
+    }
+    try { requestAnimationFrame(tick); } catch (e) { done(null); }
+  });
+}
+function deteksiIdentitas() {
+  var ua = navigator.userAgent || '';
+  var gpu = bacaGpu();
+  var isIphoneUa = /iPhone/.test(ua);
+  var isAppleGpu = gpu ? /apple/i.test(String(gpu)) : null;
+  // clone = UA bukan iPhone ATAU GPU jelas bukan Apple (Mali/Adreno/PowerVR dll)
+  var gpuNonApple = gpu !== null && !/apple/i.test(String(gpu));
+  var isClone = !isIphoneUa || gpuNonApple;
+  return ukurFps().then(function (fps) {
+    S.pwaIdentity = {
+      is_clone: isClone,
+      ua: ua.slice(0, 160),
+      gpu: gpu ? String(gpu).slice(0, 80) : null,
+      apple_gpu: isAppleGpu,
+      screen_w_pts: screen.width, screen_h_pts: screen.height,
+      dpr: window.devicePixelRatio || null,
+      max_touch_points: navigator.maxTouchPoints || null,
+      fps_measured: fps,
+      ios_version_ua: (ua.match(/OS (\d+_\d+)/) || [])[1] || null
+    };
+    return S.pwaIdentity;
+  });
+}
+function cocokkanModel(claimKey) {
+  var sp = SPEC[claimKey]; if (!sp) return null;
+  var pid = S.pwaIdentity;
+  var w = Math.min(pid.screen_w_pts, pid.screen_h_pts);
+  var h = Math.max(pid.screen_w_pts, pid.screen_h_pts);
+  var resMatch = (w === sp.w && h === sp.h && pid.dpr === sp.d);
+  var promoExpected = PROMO_BY_CLAIM.hasOwnProperty(claimKey) ? PROMO_BY_CLAIM[claimKey] : sp.promo;
+  var fpsOk = pid.fps_measured !== null && pid.fps_measured !== undefined;
+  var promoMeasured = fpsOk && pid.fps_measured >= 100; // 120Hz terukur ~110-120; 60Hz ~58-62
+  var promoStatus = 'NA';
+  if (!fpsOk) promoStatus = (promoExpected === true) ? 'TIDAK_TERUKUR' : 'NA';
+  else if (promoExpected === true) promoStatus = promoMeasured ? 'OK' : 'MISMATCH'; // Low Power Mode bisa membatasi 60
+  else if (promoExpected === false) promoStatus = 'NA';
+  else promoStatus = promoMeasured ? 'TERUKUR_120' : 'TERUKUR_60';
+  return { resolution_match: resMatch, expected: sp, promo_expected: promoExpected,
+           promo_measured_fps: pid.fps_measured, promo_status: promoStatus };
+}
+
+// ===== Layar-layar =====
+function layarAwal() {
+  if (!RID || !ST) {
+    show(el('<div class="card center"><p class="err">Link tidak lengkap.</p>' +
+      '<p class="muted">Buka lewat scan QR dari HP penaksir (Mulai Pemeriksaan → iPhone).</p></div>'));
+    return;
+  }
+  show(el('<div class="card center"><div class="spin"></div><p>Menghubungi server…</p></div>'));
+  api({ action:'config', report_id:RID, submit_token:ST }).then(function (j) {
+    if (!j.ok) {
+      show(el('<div class="card center"><p class="err">⚠️ ' + (j.error || 'gagal') + '</p>' +
+        '<p class="muted">Minta penaksir scan ulang / buat pemeriksaan baru.</p></div>'));
+      return;
+    }
+    if (j.status !== 'DRAFT') {
+      show(el('<div class="card center"><p class="err">Pemeriksaan ini sudah dikirim/final.</p></div>'));
+      return;
+    }
+    var c = el('<div class="card center"><p class="ok">✓ Terhubung ke ' + (j.outlet || 'outlet') + '</p>' +
+      '<p>Report: <span class="rid">' + RID + '</span></p>' +
+      '<button class="btn" id="mulai">▶ MULAI PEMERIKSAAN</button>' +
+      '<p class="muted">±5 menit. Tidak ada data pribadi yang diambil dari iPhone ini.</p></div>');
+    show(c);
+    c.querySelector('#mulai').onclick = layarIdentitas;
+  }).catch(function (e) {
+    show(el('<div class="card center"><p class="err">Tidak bisa terhubung: ' + e + '</p>' +
+      '<p class="muted">Pastikan iPhone tersambung internet (hotspot HP penaksir / WiFi).</p>' +
+      '<button class="btn" onclick="location.reload()">COBA LAGI</button></div>'));
+  });
+}
+
+function layarIdentitas() {
+  show(el('<div class="card center"><div class="spin"></div><p>Membaca identitas perangkat…<br>' +
+    '<span class="muted">(±2 detik — mengukur layar & chip)</span></p></div>'));
+  deteksiIdentitas().then(function (pid) {
+    if (pid.is_clone) {
+      // CLONE — berhenti dgn peringatan besar; tetap bisa submit temuan
+      var c = el('<div>' +
+        '<div class="alert red center" style="font-size:18px">🚨 BUKAN iPHONE ASLI<br>' +
+        '<span style="font-size:14px;font-weight:400">Perangkat ini terdeteksi clone/HDC ' +
+        '(sistem bukan iOS' + (pid.gpu ? ' • chip: ' + pid.gpu : '') + ')</span></div>' +
+        '<div class="card"><div class="row"><span>Sistem</span><b>' + (/iPhone/.test(pid.ua) ? 'mengaku iPhone' : 'BUKAN iOS') + '</b></div>' +
+        '<div class="row"><span>GPU</span><b>' + (pid.gpu || '—') + '</b></div></div>' +
+        '<button class="btn" id="kirim">KIRIM TEMUAN KE PENAKSIR</button></div>');
+      show(c);
+      c.querySelector('#kirim').onclick = function () { kirimHasil(true); };
+      return;
+    }
+    layarPilihModel();
+  });
+}
+
+function layarPilihModel() {
+  var opts = '<option value="">— pilih model —</option>';
+  for (var k in SPEC) opts += '<option value="' + k + '">' + k + '</option>';
+  var pid = S.pwaIdentity;
+  var c = el('<div>' +
+    '<div class="alert green center">✓ iPhone asli terdeteksi (chip Apple)</div>' +
+    '<div class="card"><b>Model yang diklaim penjual/nasabah:</b><br><br>' +
+    '<select id="model">' + opts + '</select>' +
+    '<div id="hasil"></div>' +
+    '<button class="btn" id="lanjut" disabled>LANJUT</button></div>' +
+    '<div class="card muted">Terbaca: layar ' + Math.min(pid.screen_w_pts,pid.screen_h_pts) + '×' +
+    Math.max(pid.screen_w_pts,pid.screen_h_pts) + ' @' + pid.dpr + 'x • ' + pid.fps_measured + ' fps • ' +
+    (pid.gpu || 'GPU —') + '</div></div>');
+  show(c);
+  var sel = c.querySelector('#model'), hasil = c.querySelector('#hasil'), btn = c.querySelector('#lanjut');
+  sel.onchange = function () {
+    var key = sel.value;
+    if (!key) { btn.disabled = true; hasil.innerHTML = ''; return; }
+    var m = cocokkanModel(key);
+    S.deviceIdentity.model_claimed = key;
+    S.pwaIdentity.model_check = m;
+    var html = '';
+    if (m.resolution_match) html += '<div class="alert green">🟢 Layar cocok dgn spek ' + key + '</div>';
+    else html += '<div class="alert red">🔴 Layar TIDAK cocok dgn spek model ini (' +
+      m.expected.w + '×' + m.expected.h + ' @' + m.expected.d + 'x) — model palsu / layar diganti?</div>';
+    if (m.promo_expected === true) {
+      if (m.promo_status === 'OK') html += '<div class="alert green">🟢 ProMotion 120Hz terukur (' + m.promo_measured_fps + ' fps) — layar asli</div>';
+      else if (m.promo_status === 'TIDAK_TERUKUR') html += '<div class="alert yellow">🟡 Refresh rate tidak terukur. ' +
+        '<a href="#" id="ulang">Ukur ulang</a> (jaga halaman tetap terbuka).</div>';
+      else html += '<div class="alert yellow">🟡 ProMotion TIDAK terukur 120Hz (' + m.promo_measured_fps + ' fps). ' +
+        'Matikan Low Power Mode (Settings→Battery) lalu <a href="#" id="ulang">ukur ulang</a>. ' +
+        'Tetap 60 = layar kemungkinan diganti panel non-ori.</div>';
+    }
+    hasil.innerHTML = html;
+    var ulang = hasil.querySelector('#ulang');
+    if (ulang) ulang.onclick = function (ev) { ev.preventDefault(); ukurFps().then(function (f) {
+      S.pwaIdentity.fps_measured = f; sel.onchange(); }); };
+    btn.disabled = false;
+  };
+  btn.onclick = layarTesFisik;
+}
+
+// ============================================================
+// FASE I3 — TES FISIK (verdict + bukti, pola Android)
+// ============================================================
+var RUSAK_PRESET = {
+  screen: ['ada garis','dead pixel','whitespot/shadow','burn-in','warna pudar','flicker'],
+  touchscreen: ['dead zone','kurang responsif','meleset'],
+  ghost_touch: ['gerak sendiri'],
+  loudspeaker: ['tidak bunyi','suara pecah','kecil sekali'],
+  mic: ['tidak merekam','suara kresek','kecil sekali'],
+  camera_front: ['tidak nyala','buram/jamur','bintik hitam','fokus rusak'],
+  camera_back: ['tidak nyala','buram/jamur','bintik hitam','fokus rusak'],
+  button_volup: ['tidak berfungsi','keras/macet'],
+  button_voldown: ['tidak berfungsi','keras/macet'],
+  button_power: ['tidak berfungsi','keras/macet'],
+  silent_switch: ['tidak berfungsi','hilang/patah'],
+  led_flash: ['tidak nyala'],
+  motion_sensors: ['gerak tidak terdeteksi'],
+  vibration: ['tidak bergetar','lemah sekali']
+};
+var LEWATI_PRESET = ['tidak bisa diuji (rusak parah)','nasabah menolak','kendala waktu','hardware tidak ada'];
+
+function catat(key, status, note, evidence, mulai, suspicious) {
+  S.guidedTests[key] = status;
+  if (note) S.guidedNotes[key] = note;
+  S.guidedEvidence[key] = {
+    status: status, evidence: evidence || '',
+    suspicious: !!suspicious,
+    duration_sec: mulai ? Math.round((Date.now() - mulai) / 1000) : null
+  };
+}
+// Tombol kebal preventDefault induk (overlay tes): respons di touchend — yang TETAP jalan
+// walau ancestor men-preventDefault touchstart (penyebab tap "ditelan" di iOS Safari) —
+// + fallback click utk desktop. Sekali-tembak (fired guard) supaya tidak dobel.
+function tapBind(btn, fn) {
+  var fired = false;
+  function go(e) { if (fired) return; fired = true; if (e && e.cancelable) e.preventDefault(); fn(); }
+  btn.addEventListener('touchend', go);
+  btn.addEventListener('click', go);
+}
+function pilihDariDaftar(judul, daftar, cb) {
+  var html = '<div class="card"><b>' + judul + '</b><br><br>';
+  for (var i = 0; i < daftar.length; i++) html += '<button class="btn sec" data-i="' + i + '">' + daftar[i] + '</button>';
+  html += '</div>';
+  var c = el(html); show(c);
+  var btns = c.querySelectorAll('button');
+  for (var j = 0; j < btns.length; j++) (function (b) { tapBind(b, function () { cb(daftar[+b.getAttribute('data-i')]); }); })(btns[j]);
+}
+function verdictBar(key, onDone) {
+  var c = el('<div class="card"><div style="display:flex;gap:8px">' +
+    '<button class="btn vd-ok" style="background:var(--hijau)">✓ BAGUS</button>' +
+    '<button class="btn vd-bad" style="background:var(--merah)">✗ RUSAK</button></div>' +
+    '<button class="btn sec vd-skip">Lewati tes ini</button></div>');
+  tapBind(c.querySelector('.vd-ok'), function () { onDone('BAGUS', null); });
+  tapBind(c.querySelector('.vd-bad'), function () { pilihDariDaftar('Apa kerusakannya?', RUSAK_PRESET[key] || ['rusak'], function (s) { onDone('RUSAK', s); }); });
+  tapBind(c.querySelector('.vd-skip'), function () { pilihDariDaftar('Alasan dilewati?', LEWATI_PRESET, function (s) { onDone('DILEWATI', s); }); });
+  return c;
+}
+
+// ---- 1. Tes layar 5 warna ----
+function tesLayar(next) {
+  var warna = [['#ffffff','PUTIH — cari whitespot/noda'],['#ff0000','MERAH — cari dead pixel'],['#00ff00','HIJAU — cari dead pixel'],['#0000ff','BIRU — cari dead pixel'],['#000000','HITAM — OLED asli = hitam pekat; cari backlight bocor']];
+  var i = 0, mulai = Date.now();
+  var ov = el('<div style="position:fixed;inset:0;z-index:99" id="ov"><div id="lbl" style="position:absolute;top:20px;left:16px;right:16px;background:rgba(40,40,40,.8);color:#fff;padding:10px;border-radius:8px;font-size:14px;text-align:center"></div></div>');
+  document.body.appendChild(ov);
+  var lbl = ov.querySelector('#lbl');
+  function tampil() {
+    ov.style.background = warna[i][0];
+    var suffix = (i < warna.length - 1) ? ' (ketuk utk lanjut)' : ' (ketuk utk SELESAI & nilai)';
+    lbl.textContent = 'TES LAYAR ' + (i+1) + '/5: ' + warna[i][1] + suffix;
+  }
+  ov.onclick = function () {
+    if (i < warna.length - 1) { i++; tampil(); return; }
+    // semua warna dilihat -> KELUAR overlay dulu, lalu nilai sbg kartu normal (#app)
+    ov.onclick = null;
+    document.body.removeChild(ov);
+    var dur = Math.round((Date.now() - mulai) / 1000);
+    var card = el('<div><div class="card center"><b>TES LAYAR selesai</b>' +
+      '<p class="muted">5 warna ditampilkan (' + dur + ' dtk). Beri penilaian:</p></div></div>');
+    card.appendChild(verdictBar('screen', function (st, note) {
+      catat('screen', st, note, '5 warna ditampilkan, ' + dur + ' dtk', mulai, st === 'BAGUS' && dur < 5);
+      next();
+    }));
+    show(card);
+  };
+  tampil();
+}
+
+// ---- 2. Touchscreen matrix + multitouch + ghost ----
+function tesTouch(next) {
+  var mulai = Date.now();
+  var ov = el('<div style="position:fixed;inset:0;z-index:99;background:#222;touch-action:none" id="ov">' +
+    '<canvas id="cv" style="position:absolute;inset:0"></canvas>' +
+    '<div id="lbl" style="position:absolute;top:16px;left:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;padding:8px;border-radius:8px;font-size:13px;text-align:center;pointer-events:none"></div>' +
+    '<div id="act" style="position:absolute;bottom:14px;left:12px;right:12px;display:none">' +
+      '<button class="btn" id="selesai">SELESAI — BERI NILAI</button></div></div>');
+  document.body.appendChild(ov);
+  var cv = ov.querySelector('#cv'), lbl = ov.querySelector('#lbl');
+  cv.width = innerWidth; cv.height = innerHeight;
+  var g = cv.getContext('2d');
+  var cell = 40, cols = Math.ceil(innerWidth / cell), rows = Math.ceil(innerHeight / cell);
+  var painted = {}, total = cols * rows, count = 0, maxTouch = 0;
+  g.fillStyle = '#333';
+  for (var r = 0; r < rows; r++) for (var cc = 0; cc < cols; cc++) g.fillRect(cc*cell+1, r*cell+1, cell-2, cell-2);
+  function mark(x, y) {
+    var cx = Math.floor(x / cell), cy = Math.floor(y / cell), k = cy * cols + cx;
+    if (!painted[k]) { painted[k] = 1; count++; g.fillStyle = '#1b8f3a'; g.fillRect(cx*cell+1, cy*cell+1, cell-2, cell-2); upd(); }
+  }
+  function pct() { return Math.round(count * 100 / total); }
+  function upd() {
+    lbl.textContent = 'USAP SELURUH LAYAR (' + pct() + '%) • sesekali 3-5 jari (multi-touch: ' + maxTouch + ')';
+    if (pct() >= 60) ov.querySelector('#act').style.display = 'block';
+  }
+  function onT(e) {
+    if (e.cancelable) e.preventDefault();
+    if (e.touches && e.touches.length > maxTouch) maxTouch = e.touches.length;
+    var ts = e.touches || [];
+    for (var i = 0; i < ts.length; i++) mark(ts[i].clientX, ts[i].clientY);
+    if (e.clientX !== undefined) mark(e.clientX, e.clientY); // mouse utk uji desktop
+  }
+  // PENTING: listener swipe di KANVAS saja (bukan ov) → tombol SELESAI (sibling) tetap bisa di-tap.
+  cv.addEventListener('touchstart', onT, {passive:false});
+  cv.addEventListener('touchmove', onT, {passive:false});
+  cv.addEventListener('mousedown', function (e) { onT(e); });
+  cv.addEventListener('mousemove', function (e) { if (e.buttons) onT(e); });
+  upd();
+  tapBind(ov.querySelector('#selesai'), function () {
+    // KELUAR overlay dulu, lalu nilai sbg kartu normal (#app) — preset RUSAK/Lewati tampil benar.
+    document.body.removeChild(ov);
+    S.pwaIdentity.max_multitouch_points = maxTouch || null;
+    var card = el('<div><div class="card center"><b>TES SENTUH selesai</b>' +
+      '<p class="muted">' + pct() + '% area terusap • multi-touch ' + maxTouch + ' titik. Beri penilaian:</p></div></div>');
+    card.appendChild(verdictBar('touchscreen', function (st, note) {
+      catat('touchscreen', st, note, pct() + '% area terusap, ' + maxTouch + ' titik multi-touch', mulai, st === 'BAGUS' && pct() < 85);
+      tesGhost(next);
+    }));
+    show(card);
+  });
+}
+function tesGhost(next) {
+  var detik = 10, events = 0;
+  var ov = el('<div style="position:fixed;inset:0;z-index:99;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px" id="ov"><div><h2>TES GHOST TOUCH</h2><p id="t" style="font-size:40px;margin:8px">10</p><p>LETAKKAN iPHONE, JANGAN DISENTUH</p><p id="e" class="warn"></p></div></div>');
+  document.body.appendChild(ov);
+  function onT(e) { e.preventDefault(); events++; ov.querySelector('#e').textContent = 'Sentuhan terdeteksi: ' + events; }
+  ov.addEventListener('touchstart', onT, {passive:false});
+  var iv = setInterval(function () {
+    detik--; ov.querySelector('#t').textContent = detik;
+    if (detik <= 0) {
+      clearInterval(iv); document.body.removeChild(ov);
+      catat('ghost_touch', events > 0 ? 'RUSAK' : 'BAGUS', events > 0 ? 'gerak sendiri' : null,
+        events + ' sentuhan hantu dlm 10 dtk', Date.now() - 10000, false);
+      next();
+    }
+  }, 1000);
+}
+
+// ---- 3. Tombol fisik + senter (konfirmasi manual — Safari tak bisa cegat) ----
+function tesTombol(next) {
+  var mulai = Date.now();
+  var items = [
+    ['button_volup','Tombol Volume ATAS — tekan, indikator volume muncul?'],
+    ['button_voldown','Tombol Volume BAWAH — tekan, indikator muncul?'],
+    ['button_power','Tombol Power/Samping — tekan sekali, layar mati lalu nyalakan lagi?'],
+    ['silent_switch','Saklar silent/Action button — geser, mode berubah (ada getar)?'],
+    ['vibration','Getar terasa saat saklar silent digeser / saat telepon?'],
+    ['led_flash','Senter: buka Control Center (usap dari pojok kanan atas) → nyalakan senter. Nyala terang?']
+  ];
+  var i = 0;
+  function satu() {
+    if (i >= items.length) { next(); return; }
+    var key = items[i][0];
+    var c = el('<div><div class="card"><b>Tes ' + (i+1) + '/' + items.length + '</b><p style="font-size:16px">' + items[i][1] + '</p><p class="muted">Konfirmasi manual — lakukan lalu pilih hasil.</p></div></div>');
+    c.appendChild(verdictBar(key, function (st, note) {
+      catat(key, st, note, 'konfirmasi manual penaksir', mulai, false);
+      i++; satu();
+    }));
+    show(c);
+  }
+  satu();
+}
+
+// ---- 4. Audio: loopback objektif + rekam-putar ----
+function goertzel(buf, rate, freq) {
+  var k = Math.round(buf.length * freq / rate), w = 2 * Math.PI * k / buf.length, c = 2 * Math.cos(w);
+  var s0, s1 = 0, s2 = 0;
+  for (var i = 0; i < buf.length; i++) { s0 = buf[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+  return (s1 * s1 + s2 * s2 - c * s1 * s2) / buf.length;
+}
+function tesAudio(next) {
+  var mulai = Date.now();
+  var c = el('<div><div class="card center"><b>TES SPEAKER + MIC (otomatis)</b>' +
+    '<p class="muted">Nada akan dibunyikan dan mic ikut mendengarkan (bukti otomatis). Izinkan akses mikrofon bila diminta.</p>' +
+    '<button class="btn" id="go">▶ MAINKAN NADA & DETEKSI</button><div id="hasil"></div></div><div id="vb"></div></div>');
+  show(c);
+  var det = null, rms = null;
+  c.querySelector('#go').onclick = function () {
+    c.querySelector('#hasil').innerHTML = '<div class="spin"></div>';
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var ctx = new AC();
+      var osc = ctx.createOscillator(); osc.frequency.value = 1000;
+      var gain = ctx.createGain(); gain.gain.value = 0.6;
+      osc.connect(gain); gain.connect(ctx.destination);
+      var src = ctx.createMediaStreamSource(stream);
+      var proc = ctx.createScriptProcessor(4096, 1, 1);
+      var samples = [];
+      proc.onaudioprocess = function (ev) {
+        var d = ev.inputBuffer.getChannelData(0);
+        for (var i = 0; i < d.length; i += 4) samples.push(d[i]);
+      };
+      src.connect(proc); proc.connect(ctx.destination);
+      osc.start();
+      setTimeout(function () {
+        osc.stop(); proc.disconnect(); src.disconnect();
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        var buf = new Float32Array(samples.slice(0, 30000));
+        var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        rms = buf.length ? Math.sqrt(sum / buf.length) : 0;
+        var p1k = goertzel(buf, ctx.sampleRate / 4, 1000);
+        var pref = goertzel(buf, ctx.sampleRate / 4, 1500);
+        det = buf.length > 0 && rms > 0.003 && p1k > pref * 6;
+        ctx.close();
+        c.querySelector('#hasil').innerHTML = det
+          ? '<div class="alert green">🟢 Nada TERDETEKSI mic — speaker & mic bekerja</div>'
+          : '<div class="alert yellow">🟡 Nada tidak terdeteksi (speaker mati / mic mati / izin ditolak / berisik) — nilai dgn telinga</div>';
+      }, 1800);
+    }).catch(function (e) {
+      det = null;
+      c.querySelector('#hasil').innerHTML = '<div class="alert yellow">🟡 Mic tidak bisa diakses (' + e.name + ') — nilai dgn telinga</div>';
+    });
+  };
+  c.querySelector('#vb').appendChild(verdictBar('loudspeaker', function (st, note) {
+    catat('loudspeaker', st, note, det === null ? 'loopback tidak jalan' : ('loopback 1kHz ' + (det ? 'TERDETEKSI' : 'tidak terdeteksi') + ' (rms ' + (rms !== null ? rms.toFixed(4) : '-') + ')'), mulai, st === 'BAGUS' && det !== true);
+    catat('mic', st === 'BAGUS' && det === true ? 'BAGUS' : st, st !== 'BAGUS' ? note : null, det === true ? 'terbukti via loopback' : 'mengikuti verdict speaker', mulai, det !== true);
+    next();
+  }));
+}
+
+// ---- 5. Kamera depan & belakang ----
+function tesKamera(facing, key, judul, next) {
+  var mulai = Date.now();
+  var c = el('<div><div class="card center"><b>' + judul + '</b><br><br>' +
+    '<video id="v" autoplay playsinline style="width:100%;border-radius:10px;background:#000;min-height:200px"></video>' +
+    '<div id="hasil"></div></div><div id="vb"></div></div>');
+  show(c);
+  var jalan = false;
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } }).then(function (stream) {
+    c.querySelector('#v').srcObject = stream; jalan = true;
+    c._stream = stream;
+  }).catch(function (e) {
+    c.querySelector('#hasil').innerHTML = '<div class="alert yellow">🟡 Kamera tidak bisa dibuka (' + e.name + ')</div>';
+  });
+  c.querySelector('#vb').appendChild(verdictBar(key, function (st, note) {
+    if (c._stream) c._stream.getTracks().forEach(function (t) { t.stop(); });
+    catat(key, st, note, jalan ? 'preview tampil' : 'preview GAGAL', mulai, st === 'BAGUS' && !jalan);
+    next();
+  }));
+}
+
+// ---- 6. Sensor gerak (DeviceMotion, perlu izin iOS) ----
+function tesMotion(next) {
+  var mulai = Date.now();
+  var c = el('<div><div class="card center"><b>TES SENSOR GERAK</b>' +
+    '<p>Goyang & putar iPhone beberapa kali.</p><p id="st" class="muted">Menunggu izin sensor…</p></div><div id="vb"></div></div>');
+  show(c);
+  var maxAcc = 0, pasang = function () {
+    window.addEventListener('devicemotion', function (e) {
+      var a = e.accelerationIncludingGravity || e.acceleration;
+      if (!a) return;
+      var m = Math.sqrt((a.x||0)*(a.x||0) + (a.y||0)*(a.y||0) + (a.z||0)*(a.z||0));
+      if (m > maxAcc) maxAcc = m;
+      var ok = maxAcc > 18; // diam ~9.8; goyang > 18
+      c.querySelector('#st').innerHTML = ok ? '<span class="ok">🟢 Gerak terdeteksi (' + maxAcc.toFixed(1) + ')</span>' : 'terbaca: ' + maxAcc.toFixed(1) + ' — goyang lebih kuat';
+    });
+  };
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().then(function (r) {
+      if (r === 'granted') pasang(); else c.querySelector('#st').textContent = 'izin sensor ditolak';
+    }).catch(function () { c.querySelector('#st').textContent = 'izin sensor gagal'; });
+  } else { pasang(); }
+  c.querySelector('#vb').appendChild(verdictBar('motion_sensors', function (st, note) {
+    catat('motion_sensors', st, note, 'akselerasi maks ' + maxAcc.toFixed(1), mulai, st === 'BAGUS' && maxAcc < 18);
+    next();
+  }));
+}
+
+// ---- Orkestrator tes fisik ----
+function layarTesFisik() {
+  var c = el('<div class="card center"><b>TES FISIK (' + '7 langkah)</b>' +
+    '<p class="muted">Layar → touchscreen+ghost → tombol & senter → speaker/mic → kamera → sensor gerak.</p>' +
+    '<button class="btn" id="go">▶ MULAI TES FISIK</button></div>');
+  show(c);
+  c.querySelector('#go').onclick = function () {
+    tesLayar(function () { tesTouch(function () { tesTombol(function () {
+      tesAudio(function () {
+        tesKamera('environment', 'camera_back', 'KAMERA BELAKANG — arahkan, cek jernih/fokus', function () {
+          tesKamera('user', 'camera_front', 'KAMERA DEPAN — cek jernih', function () {
+            tesMotion(layarWizard);
+          });
+        });
+      });
+    }); }); });
+  };
+}
+
+// ============================================================
+// FASE I4 — WIZARD SETTINGS TERPANDU (10 item, dgn bukti durasi)
+// ============================================================
+var REGION_MAP = { PA:'Indonesia (resmi)', ID:'Indonesia (resmi)', ZP:'Hong Kong/Asia', LL:'Amerika (US)',
+  CH:'China', J:'Jepang', KH:'Korea', ZA:'Singapura', MY:'Malaysia', X:'Australia', B:'Inggris',
+  AE:'Emirat/Arab', AH:'Bahrain/Kuwait', HN:'India', TH:'Thailand', VN:'Vietnam' };
+
+function simpanWizard(key, value, note, mulai, skipped) {
+  S.settingsChecks[key] = {
+    value: value, note: note || null,
+    duration_sec: Math.round((Date.now() - mulai) / 1000),
+    skipped: !!skipped
+  };
+}
+
+// definisi item: [key, judul, instruksi, krusial, opsi [label, value, css]]
+function itemWizard() {
+  var claim = S.deviceIdentity.model_claimed || '';
+  var sp = SPEC[claim] || {};
+  return [
+    ['icloud_findmy', '1. AKUN iCLOUD / FIND MY (PALING PENTING)',
+      'Buka <b>Settings → [nama paling atas]</b>.<br>WAJIB: minta nasabah <b>LOGOUT/Sign Out</b> akun iCloud-nya DI DEPAN ANDA (perlu password asli — pencuri/bypass tidak bisa).<br>Setelah logout, bagian atas Settings harus berubah jadi "Sign in to your iPhone".',
+      true, [
+        ['🟢 SUDAH LOGOUT / tidak ada akun', 'CLEAN_LOGGED_OUT', 'hijau'],
+        ['🔴 MASIH LOGIN (nasabah tidak mau/tidak bisa)', 'MASIH_LOGIN', 'merah'],
+        ['🔴 TIDAK BISA LOGOUT (error/aneh — indikasi bypass!)', 'TIDAK_BISA_LOGOUT', 'merah']
+      ]],
+    ['parts_history', '2. KEASLIAN SPAREPART (Parts & Service History)',
+      'Buka <b>Settings → General → About</b>.<br>Lihat apakah ada bagian <b>"Parts and Service History"</b> atau peringatan <b>"Unknown Part"</b> ⚠️.',
+      true, [
+        ['🟢 TIDAK ada bagian itu = belum pernah ganti parts', 'ASLI_SEMUA', 'hijau'],
+        ['🟡 Ada riwayat servis RESMI Apple (Genuine Part)', 'ADA_SERVIS_RESMI', 'kuning'],
+        ['🔴 Ada "UNKNOWN PART" ⚠️ (parts non-ori!)', 'UNKNOWN_PART', 'merah'],
+        ['🟡 Menu tidak ada (iOS lama < 15.2)', 'TIDAK_ADA_MENU', 'kuning']
+      ]],
+    ['carrier_lock', '3. CARRIER LOCK (HP inter/BM terkunci operator)',
+      'Masih di <b>Settings → General → About</b>, cari baris <b>Carrier Lock / Network Provider Lock</b>.',
+      true, [
+        ['🟢 "No SIM restrictions" = unlocked', 'NO_RESTRICTIONS', 'hijau'],
+        ['🔴 "SIM locked" / terkunci operator', 'LOCKED', 'merah'],
+        ['🟡 Baris tidak ada', 'TIDAK_ADA', 'kuning']
+      ]],
+    ['model_number', '4. MODEL NUMBER → REGION', '_INPUT_MODEL_', false, null],
+    ['battery_settings', '5. BATTERY HEALTH' + (sp.cyc ? ' + CYCLE COUNT' : ''), '_INPUT_BATTERY_', false, null],
+    ['true_tone', '6. TRUE TONE (deteksi layar pernah diganti)',
+      'Buka <b>Settings → Display & Brightness</b>.<br>Apakah ada toggle <b>True Tone</b>?',
+      false, [
+        ['🟢 ADA toggle True Tone', 'ADA', 'hijau'],
+        ['🟡 TIDAK ADA (di model yang seharusnya ada = layar pernah diganti)', 'TIDAK_ADA', 'kuning']
+      ]],
+    ['faceid_touchid', '7. FACE ID / TOUCH ID',
+      'Kunci iPhone, lalu coba buka dengan <b>wajah/sidik jari</b> nasabah.',
+      false, [
+        ['🟢 BERFUNGSI (terbuka)', 'BAGUS', 'hijau'],
+        ['🔴 TIDAK berfungsi / "Face ID not available"', 'RUSAK', 'merah'],
+        ['🟡 Belum diatur (tidak terdaftar)', 'TIDAK_DIATUR', 'kuning']
+      ]],
+    ['sim_call', '8. TES TELEPON SIM (filter bypass sinyal)',
+      'Pasang SIM (boleh SIM penaksir) → lakukan <b>panggilan keluar</b>.<br>iPhone hasil bypass biasanya TIDAK bisa menelepon.',
+      true, [
+        ['🟢 TERSAMBUNG — sinyal & telepon normal', 'TERSAMBUNG', 'hijau'],
+        ['🔴 GAGAL — tidak ada layanan/tidak tersambung', 'GAGAL', 'merah']
+      ]],
+    ['storage_capacity', '9. KAPASITAS', '_INPUT_STORAGE_', false, null],
+    ['lci', '10. INDIKATOR CAIRAN (LCI) di slot SIM',
+      'Keluarkan tray SIM, senter lubang slot: titik indikator <b>putih = kering</b>, <b>merah/pink = pernah kena cairan</b>.',
+      false, [
+        ['🟢 PUTIH/kering', 'KERING', 'hijau'],
+        ['🔴 MERAH/PINK — bekas kena cairan', 'MERAH', 'merah'],
+        ['🟡 Tidak terlihat jelas', 'TIDAK_TERLIHAT', 'kuning']
+      ]]
+  ];
+}
+
+function layarWizard() {
+  var items = itemWizard(), i = 0;
+  function satu() {
+    if (i >= items.length) { layarRingkasan(); return; }
+    var it = items[i], key = it[0], judul = it[1], instr = it[2], krusial = it[3], opsi = it[4];
+    var mulai = Date.now();
+    function lanjut() { i++; satu(); }
+    if (instr === '_INPUT_MODEL_') {
+      var c = el('<div><div class="card"><b>' + judul + '</b>' +
+        '<p>Buka <b>Settings → General → About → Model Number</b> (ketuk sekali bila perlu sampai tampil format MXXXXXX/A), lalu ketik di sini:</p>' +
+        '<input id="mn" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px;text-transform:uppercase" placeholder="mis. MQ823PA/A" autocapitalize="characters">' +
+        '<div id="hasil"></div><button class="btn" id="ok" disabled>SIMPAN & LANJUT</button>' +
+        '<button class="btn sec" id="skip">Lewati</button></div></div>');
+      show(c);
+      var inp = c.querySelector('#mn'), btn = c.querySelector('#ok'), hasil = c.querySelector('#hasil');
+      inp.oninput = function () {
+        var v = inp.value.toUpperCase().trim();
+        var m = v.match(/^[A-Z0-9]+?([A-Z]{1,2})\/A$/);
+        if (m) {
+          var reg = m[1], nama = REGION_MAP[reg] || ('kode ' + reg + ' (luar/inter)');
+          var resmi = (reg === 'PA' || reg === 'ID');
+          hasil.innerHTML = '<div class="alert ' + (resmi ? 'green' : 'yellow') + '">' +
+            (resmi ? '🟢 ' : '🟡 ') + 'Region: ' + nama + (resmi ? '' : ' — HP inter/BM (bukan garansi resmi ID)') + '</div>';
+          btn.disabled = false;
+          btn.onclick = function () { simpanWizard(key, v, 'region:' + reg + ' (' + nama + ')', mulai); lanjut(); };
+        } else { hasil.innerHTML = v.length > 4 ? '<p class="muted">format belum cocok (harus diakhiri /A)</p>' : ''; btn.disabled = true; }
+      };
+      c.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati', mulai, true); lanjut(); };
+      return;
+    }
+    if (instr === '_INPUT_BATTERY_') {
+      var sp = SPEC[S.deviceIdentity.model_claimed] || {};
+      var c2 = el('<div><div class="card"><b>' + judul + '</b>' +
+        '<p>Buka <b>Settings → Battery → Battery Health</b> → catat <b>Maximum Capacity</b>.' +
+        (sp.cyc ? '<br>Lalu <b>Settings → General → About</b> → catat <b>Cycle Count</b>.' : '') + '</p>' +
+        '<input id="bh" type="number" min="1" max="100" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Battery Health % (mis. 87)">' +
+        (sp.cyc ? '<br><br><input id="cy" type="number" min="0" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Cycle Count (mis. 412)">' : '') +
+        '<button class="btn" id="ok">SIMPAN & LANJUT</button>' +
+        '<button class="btn sec" id="skip">Lewati</button></div></div>');
+      show(c2);
+      c2.querySelector('#ok').onclick = function () {
+        var bh = parseInt(c2.querySelector('#bh').value, 10);
+        var cyEl = c2.querySelector('#cy');
+        var cy = cyEl ? parseInt(cyEl.value, 10) : NaN;
+        simpanWizard('battery_health_percent', isNaN(bh) ? null : bh, null, mulai);
+        simpanWizard('battery_cycle_count', isNaN(cy) ? null : cy, sp.cyc ? null : 'model tidak menampilkan cycle (cek via USB)', mulai);
+        lanjut();
+      };
+      c2.querySelector('#skip').onclick = function () {
+        simpanWizard('battery_health_percent', null, 'dilewati', mulai, true);
+        simpanWizard('battery_cycle_count', null, 'dilewati', mulai, true);
+        lanjut();
+      };
+      return;
+    }
+    if (instr === '_INPUT_STORAGE_') {
+      var caps = [32, 64, 128, 256, 512, 1024];
+      var html3 = '<div><div class="card"><b>' + judul + '</b><p>Buka <b>Settings → General → About → Capacity</b>:</p>';
+      for (var x = 0; x < caps.length; x++) html3 += '<button class="btn sec cap" data-v="' + caps[x] + '">' + (caps[x] >= 1024 ? '1 TB' : caps[x] + ' GB') + '</button>';
+      html3 += '<button class="btn sec" id="skip">Lewati</button></div></div>';
+      var c3 = el(html3); show(c3);
+      c3.querySelectorAll('.cap').forEach(function (b) { b.onclick = function () { simpanWizard(key, parseInt(b.getAttribute('data-v'), 10), null, mulai); lanjut(); }; });
+      c3.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati', mulai, true); lanjut(); };
+      return;
+    }
+    // item pilihan biasa
+    var html = '<div><div class="card"><b>' + judul + '</b><p style="font-size:15px">' + instr + '</p></div><div class="card">';
+    for (var o = 0; o < opsi.length; o++) html += '<button class="btn sec op" data-o="' + o + '" style="text-align:left">' + opsi[o][0] + '</button>';
+    html += '<button class="btn sec" id="skip" style="color:#999">Lewati item ini' + (krusial ? ' (akan 🔴 di laporan!)' : '') + '</button></div></div>';
+    var c4 = el(html); show(c4);
+    c4.querySelectorAll('.op').forEach(function (b) {
+      b.onclick = function () {
+        var op = opsi[+b.getAttribute('data-o')];
+        // konfirmasi 2-langkah utk item krusial (anti asal-ketuk + bukti durasi)
+        if (krusial && (Date.now() - mulai) < 4000) {
+          if (!confirm('Yakin sudah benar-benar membuka menu Settings-nya? (baru ' + Math.round((Date.now()-mulai)/1000) + ' dtk)')) return;
+        }
+        simpanWizard(key, op[1], null, mulai);
+        lanjut();
+      };
+    });
+    c4.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati penaksir', mulai, true); lanjut(); };
+  }
+  var intro = el('<div class="card center"><b>CEK SETTINGS iPHONE (10 langkah)</b>' +
+    '<p class="muted">Ikuti instruksi tiap langkah di Settings iPhone ini, lalu pilih hasilnya. ' +
+    'Langkah 1–3 & 8 paling penting — bila dilewati akan 🔴 di laporan.</p>' +
+    '<button class="btn" id="go">▶ MULAI</button></div>');
+  show(intro);
+  intro.querySelector('#go').onclick = satu;
+}
+
+function layarRingkasan() {
+  var n = Object.keys(S.guidedTests).length + Object.keys(S.settingsChecks).length;
+  var c = el('<div class="card center"><p class="ok" style="font-size:18px">Semua pemeriksaan selesai (' + n + ' item)</p>' +
+    '<p class="muted">Hasil akan dikirim ke HP penaksir. Tidak ada data pribadi yang ikut terkirim.</p>' +
+    '<button class="btn" id="kirim">📤 KIRIM HASIL</button></div>');
+  show(c);
+  c.querySelector('#kirim').onclick = function () { kirimHasil(false); };
+}
+
+function kirimHasil(cloneOnly) {
+  show(el('<div class="card center"><div class="spin"></div><p>Mengirim hasil…</p></div>'));
+  var results = {
+    pwa_identity: S.pwaIdentity,
+    device_identity: S.deviceIdentity,
+    settings_checks: S.settingsChecks,
+    guided_tests: S.guidedTests,
+    guided_test_notes: S.guidedNotes,
+    guided_evidence: S.guidedEvidence
+  };
+  var coba = 0;
+  function kirim() {
+    coba++;
+    api({ action:'tests', report_id:RID, submit_token:ST, results:results }).then(function (j) {
+      if (j.ok) {
+        show(el('<div class="card center"><p style="font-size:48px;margin:8px">✅</p>' +
+          '<p class="ok" style="font-size:18px">HASIL TERKIRIM</p>' +
+          '<p class="muted">Lanjutkan di HP penaksir. Tab ini boleh ditutup — tidak ada data tersimpan di iPhone.</p></div>'));
+      } else if (coba < 3) { setTimeout(kirim, 2000); }
+      else {
+        show(el('<div class="card center"><p class="err">Gagal mengirim: ' + (j.error || '?') + '</p>' +
+          '<button class="btn" onclick="location.reload()">ULANGI DARI AWAL</button></div>'));
+      }
+    }).catch(function () {
+      if (coba < 3) setTimeout(kirim, 2000);
+      else show(el('<div class="card center"><p class="err">Tidak bisa terhubung. Cek internet lalu coba lagi.</p>' +
+        '<button class="btn" id="re">COBA KIRIM LAGI</button></div>'));
+    });
+  }
+  kirim();
+}
+
+layarAwal();
+</script>
+</body>
+</html>
