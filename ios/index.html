@@ -40,7 +40,7 @@
 <div class="wrap">
   <div class="head">
     <h1>📱 Cek iPhone Gadai</h1>
-    <div class="sub">DRPE iOS v0.5 • tanpa install • tidak menyimpan data</div>
+    <div class="sub">DRPE iOS v0.6 • tanpa install • tidak menyimpan data</div>
   </div>
   <div id="app"></div>
 </div>
@@ -62,32 +62,86 @@ var S = {
   guidedEvidence: {}
 };
 
-// ===== Tabel spek iPhone (pts x DPR; spek iPhone TETAP — bukan spec-learn) =====
-// promotion=120Hz; tt=True Tone; fid=Face ID (false=Touch ID); cyc=cycle count tampil di Settings (iPhone 15+)
-var SPEC = {
-  'iPhone 6s / 7 / 8 / SE2 / SE3': { w:375, h:667, d:2, promo:false, tt:null,  fid:false, cyc:false },
-  'iPhone 6s+ / 7+ / 8 Plus':      { w:414, h:736, d:3, promo:false, tt:null,  fid:false, cyc:false },
-  'iPhone X / XS / 11 Pro':        { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
-  'iPhone 12 mini / 13 mini':      { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
-  'iPhone XR / 11':                { w:414, h:896, d:2, promo:false, tt:true,  fid:true,  cyc:false },
-  'iPhone XS Max / 11 Pro Max':    { w:414, h:896, d:3, promo:false, tt:true,  fid:true,  cyc:false },
-  'iPhone 12 / 12 Pro / 13 / 14':  { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:false },
-  'iPhone 13 Pro':                 { w:390, h:844, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
-  'iPhone 12/13 Pro Max / 14 Plus':{ w:428, h:926, d:3, promo:false, tt:true,  fid:true,  cyc:false },
-  'iPhone 13 Pro Max':             { w:428, h:926, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
-  'iPhone 14 Pro / 15 Pro / 16':   { w:393, h:852, d:3, promo:null,  tt:true,  fid:true,  cyc:null },
-  'iPhone 15':                     { w:393, h:852, d:3, promo:false, tt:true,  fid:true,  cyc:true },
-  'iPhone 14 Pro Max / 15 Pro Max':{ w:430, h:932, d:3, promo:true,  tt:true,  fid:true,  cyc:null },
-  'iPhone 15 Plus / 16 Plus':      { w:430, h:932, d:3, promo:false, tt:true,  fid:true,  cyc:true },
-  'iPhone 16 Pro':                 { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true },
-  'iPhone 16 Pro Max':             { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true }
+// ===== Tabel spek Apple PER MODEL (pts x DPR; spek TETAP — bukan spec-learn) =====
+// promo=ProMotion 120Hz; tt=True Tone; fid=Face ID (false=Touch ID); cyc=cycle count tampil di Settings.
+// Satu kunci = satu model persis (bukan grup) supaya ProMotion/cycle bisa dinilai per model dan
+// label di laporan Telegram sama dgn "Model Name" di Settings → General → About.
+// Model yang belum ada di tabel dipilih lewat MODEL_LAIN (🟡, bukan 🔴) — tabel dipelihara manual saat rilis.
+var SPEC_IPHONE = {
+  'iPhone 6s':          { w:375, h:667, d:2, promo:false, tt:null,  fid:false, cyc:false },
+  'iPhone 7':           { w:375, h:667, d:2, promo:false, tt:null,  fid:false, cyc:false },
+  'iPhone 8':           { w:375, h:667, d:2, promo:false, tt:true,  fid:false, cyc:false },
+  'iPhone SE (2020)':   { w:375, h:667, d:2, promo:false, tt:true,  fid:false, cyc:false },
+  'iPhone SE (2022)':   { w:375, h:667, d:2, promo:false, tt:true,  fid:false, cyc:false },
+  'iPhone 6s Plus':     { w:414, h:736, d:3, promo:false, tt:null,  fid:false, cyc:false },
+  'iPhone 7 Plus':      { w:414, h:736, d:3, promo:false, tt:null,  fid:false, cyc:false },
+  'iPhone 8 Plus':      { w:414, h:736, d:3, promo:false, tt:true,  fid:false, cyc:false },
+  'iPhone X':           { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone XS':          { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 11 Pro':      { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 12 mini':     { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13 mini':     { w:375, h:812, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone XR':          { w:414, h:896, d:2, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 11':          { w:414, h:896, d:2, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone XS Max':      { w:414, h:896, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 11 Pro Max':  { w:414, h:896, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 12':          { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 12 Pro':      { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13':          { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13 Pro':      { w:390, h:844, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 14':          { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 16e':         { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:true  },
+  'iPhone 17e':         { w:390, h:844, d:3, promo:false, tt:true,  fid:true,  cyc:true  },
+  'iPhone 12 Pro Max':  { w:428, h:926, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 13 Pro Max':  { w:428, h:926, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 14 Plus':     { w:428, h:926, d:3, promo:false, tt:true,  fid:true,  cyc:false },
+  'iPhone 14 Pro':      { w:393, h:852, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 15':          { w:393, h:852, d:3, promo:false, tt:true,  fid:true,  cyc:true  },
+  'iPhone 15 Pro':      { w:393, h:852, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone 16':          { w:393, h:852, d:3, promo:false, tt:true,  fid:true,  cyc:true  },
+  'iPhone 14 Pro Max':  { w:430, h:932, d:3, promo:true,  tt:true,  fid:true,  cyc:false },
+  'iPhone 15 Plus':     { w:430, h:932, d:3, promo:false, tt:true,  fid:true,  cyc:true  },
+  'iPhone 15 Pro Max':  { w:430, h:932, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone 16 Plus':     { w:430, h:932, d:3, promo:false, tt:true,  fid:true,  cyc:true  },
+  'iPhone 16 Pro':      { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone 17':          { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone 17 Pro':      { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone 16 Pro Max':  { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone 17 Pro Max':  { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone Air':         { w:420, h:912, d:3, promo:true,  tt:true,  fid:true,  cyc:true  }
 };
-// catatan: promo:null = grup campuran (sebagian ProMotion) → mismatch resolusi tetap valid,
-// pengecekan ProMotion memakai nilai per-model klaim di bawah.
-var PROMO_BY_CLAIM = {
-  'iPhone 13 Pro':true, 'iPhone 13 Pro Max':true, 'iPhone 14 Pro / 15 Pro / 16':null,
-  'iPhone 14 Pro Max / 15 Pro Max':null, 'iPhone 16 Pro':true, 'iPhone 16 Pro Max':true
+// iPad: semua @2x, Touch ID kecuali iPad Pro 2018+ (Face ID), cycle count tidak tampil di Settings.
+// ProMotion di iPad hanya informatif — rAF Safari iPad sering dibatasi 60 fps walau panel 120Hz.
+var SPEC_IPAD = {
+  'iPad (5th/6th gen 2017–2018)':        { w:768,  h:1024, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Air 2':                          { w:768,  h:1024, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Pro 9.7"':                       { w:768,  h:1024, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad mini 4 / mini 5':                { w:768,  h:1024, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad (7th/8th/9th gen 2019–2021)':    { w:810,  h:1080, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad (10th gen 2022)':                { w:820,  h:1180, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad (A16, 2025)':                    { w:820,  h:1180, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Air 4 / Air 5 (2020–2022)':      { w:820,  h:1180, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Air 11" (M2/M3 2024–2025)':      { w:820,  h:1180, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Air 13" (M2/M3 2024–2025)':      { w:1024, h:1366, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad mini 6 (2021)':                  { w:744,  h:1133, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad mini (A17 Pro, 2024)':           { w:744,  h:1133, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Air 3 (2019)':                   { w:834,  h:1112, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Pro 10.5" (2017)':               { w:834,  h:1112, d:2, promo:true,  tt:true, fid:false, cyc:false },
+  'iPad Pro 11" (2018–2022)':            { w:834,  h:1194, d:2, promo:true,  tt:true, fid:true,  cyc:false },
+  'iPad Pro 11" (M4/M5 2024–2025)':      { w:834,  h:1210, d:2, promo:true,  tt:true, fid:true,  cyc:false },
+  'iPad Pro 12.9" (1st gen 2015)':       { w:1024, h:1366, d:2, promo:false, tt:true, fid:false, cyc:false },
+  'iPad Pro 12.9" (2017–2022)':          { w:1024, h:1366, d:2, promo:true,  tt:true, fid:true,  cyc:false },
+  'iPad Pro 13" (M4/M5 2024–2025)':      { w:1032, h:1376, d:2, promo:true,  tt:true, fid:true,  cyc:false }
 };
+// Pilihan terakhir dropdown: model belum ada di tabel (rilis baru) → 🟡 minta cek manual, bukan 🔴.
+var MODEL_LAIN = 'Model lain / lebih baru (tidak ada di daftar)';
+// SPEC gabungan: kunci = label model persis, dipakai cocokkanModel() & itemWizard().
+var SPEC = {};
+(function () {
+  var k;
+  for (k in SPEC_IPHONE) SPEC[k] = SPEC_IPHONE[k];
+  for (k in SPEC_IPAD) SPEC[k] = SPEC_IPAD[k];
+})();
 
 function el(html) { var d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild || d; }
 function show() { app.innerHTML = ''; for (var i = 0; i < arguments.length; i++) app.appendChild(arguments[i]); window.scrollTo(0, 0); }
@@ -125,14 +179,26 @@ function ukurFps() {
 function deteksiIdentitas() {
   var ua = navigator.userAgent || '';
   var gpu = bacaGpu();
+  var touch = navigator.maxTouchPoints || 0;
   var isIphoneUa = /iPhone/.test(ua);
+  // Safari iPadOS 13+ bawaan "Request Desktop Website": UA menyamar "Macintosh; Intel Mac OS X"
+  // (platform 'MacIntel'). Mac sungguhan tidak punya layar sentuh → iPad dikenali dari maxTouchPoints.
+  // Dulu iPad SELALU divonis clone karena UA tidak memuat "iPhone" — itu sebab keluhan "iPad ngaco".
+  var uaDesktopMode = /Macintosh/.test(ua) && touch > 1;
+  var isIpadUa = /iPad/.test(ua) || (navigator.platform === 'MacIntel' && touch > 1) || uaDesktopMode;
+  // iPhone yang menyalakan Settings→Safari→Request Desktop Website TAMPAK persis seperti iPad mode desktop
+  // (UA Macintosh + sentuh) → pembedanya LAYAR: semua iPhone ≤ 440 pt, semua iPad ≥ 744 pt (sisi pendek).
+  var sisiPendek = Math.min(screen.width || 0, screen.height || 0);
+  var deviceKind = isIphoneUa ? 'IPHONE' : (isIpadUa ? (sisiPendek > 0 && sisiPendek < 700 ? 'IPHONE' : 'IPAD') : 'BUKAN_APPLE');
   var isAppleGpu = gpu ? /apple/i.test(String(gpu)) : null;
-  // clone = UA bukan iPhone ATAU GPU jelas bukan Apple (Mali/Adreno/PowerVR dll)
+  // clone = bukan iPhone/iPad ATAU GPU jelas bukan Apple (Mali/Adreno/PowerVR dll = HDC/Android)
   var gpuNonApple = gpu !== null && !/apple/i.test(String(gpu));
-  var isClone = !isIphoneUa || gpuNonApple;
+  var isClone = deviceKind === 'BUKAN_APPLE' || gpuNonApple;
   return ukurFps().then(function (fps) {
     S.pwaIdentity = {
       is_clone: isClone,
+      device_kind: deviceKind,
+      ua_desktop_mode: uaDesktopMode,
       ua: ua.slice(0, 160),
       gpu: gpu ? String(gpu).slice(0, 80) : null,
       apple_gpu: isAppleGpu,
@@ -140,26 +206,39 @@ function deteksiIdentitas() {
       dpr: window.devicePixelRatio || null,
       max_touch_points: navigator.maxTouchPoints || null,
       fps_measured: fps,
+      // UA mode desktop iPad tidak menyebut versi iPadOS → null (jujur tak terbaca)
       ios_version_ua: (ua.match(/OS (\d+_\d+)/) || [])[1] || null
     };
     return S.pwaIdentity;
   });
 }
+function isIpad() { return S.pwaIdentity.device_kind === 'IPAD'; }
+// Nama perangkat utk teks instruksi: iPad memakai "iPhone/iPad" supaya penaksir tidak bingung.
+function namaPerangkat() { return isIpad() ? 'iPhone/iPad' : 'iPhone'; }
 function cocokkanModel(claimKey) {
-  var sp = SPEC[claimKey]; if (!sp) return null;
   var pid = S.pwaIdentity;
+  var fpsOk = pid.fps_measured !== null && pid.fps_measured !== undefined;
+  var promoMeasured = fpsOk && pid.fps_measured >= 100; // 120Hz terukur ~110-120; 60Hz ~58-62
+  if (claimKey === MODEL_LAIN) {
+    // Model belum ada di tabel: resolusi tidak bisa dinilai (null, bukan false) → laporan 🟡 cek manual
+    return { resolution_match: null, unknown_model: true, expected: null, promo_expected: null,
+             promo_measured_fps: pid.fps_measured,
+             promo_status: !fpsOk ? 'NA' : (promoMeasured ? 'TERUKUR_120' : 'TERUKUR_60') };
+  }
+  var sp = SPEC[claimKey]; if (!sp) return null;
   var w = Math.min(pid.screen_w_pts, pid.screen_h_pts);
   var h = Math.max(pid.screen_w_pts, pid.screen_h_pts);
   var resMatch = (w === sp.w && h === sp.h && pid.dpr === sp.d);
-  var promoExpected = PROMO_BY_CLAIM.hasOwnProperty(claimKey) ? PROMO_BY_CLAIM[claimKey] : sp.promo;
-  var fpsOk = pid.fps_measured !== null && pid.fps_measured !== undefined;
-  var promoMeasured = fpsOk && pid.fps_measured >= 100; // 120Hz terukur ~110-120; 60Hz ~58-62
+  var promoExpected = sp.promo;
   var promoStatus = 'NA';
   if (!fpsOk) promoStatus = (promoExpected === true) ? 'TIDAK_TERUKUR' : 'NA';
-  else if (promoExpected === true) promoStatus = promoMeasured ? 'OK' : 'MISMATCH'; // Low Power Mode bisa membatasi 60
-  else if (promoExpected === false) promoStatus = 'NA';
-  else promoStatus = promoMeasured ? 'TERUKUR_120' : 'TERUKUR_60';
-  return { resolution_match: resMatch, expected: sp, promo_expected: promoExpected,
+  else if (promoExpected === true) {
+    if (promoMeasured) promoStatus = 'OK';
+    // iPad: Safari sering mengunci rAF di 60 fps walau panel ProMotion → bukan bukti layar diganti
+    else promoStatus = isIpad() ? 'TIDAK_TERUKUR_IPAD' : 'MISMATCH'; // iPhone: Low Power Mode bisa membatasi 60
+  }
+  else promoStatus = 'NA';
+  return { resolution_match: resMatch, unknown_model: false, expected: sp, promo_expected: promoExpected,
            promo_measured_fps: pid.fps_measured, promo_status: promoStatus };
 }
 
@@ -200,12 +279,15 @@ function layarIdentitas() {
   deteksiIdentitas().then(function (pid) {
     if (pid.is_clone) {
       // CLONE — berhenti dgn peringatan besar; tetap bisa submit temuan
+      var sistem = pid.device_kind === 'IPHONE' ? 'mengaku iPhone' :
+                   pid.device_kind === 'IPAD' ? 'mengaku iPad' : 'BUKAN iOS/iPadOS';
       var c = el('<div>' +
-        '<div class="alert red center" style="font-size:18px">🚨 BUKAN iPHONE ASLI<br>' +
+        '<div class="alert red center" style="font-size:18px">🚨 BUKAN iPHONE/iPAD ASLI<br>' +
         '<span style="font-size:14px;font-weight:400">Perangkat ini terdeteksi clone/HDC ' +
-        '(sistem bukan iOS' + (pid.gpu ? ' • chip: ' + pid.gpu : '') + ')</span></div>' +
-        '<div class="card"><div class="row"><span>Sistem</span><b>' + (/iPhone/.test(pid.ua) ? 'mengaku iPhone' : 'BUKAN iOS') + '</b></div>' +
-        '<div class="row"><span>GPU</span><b>' + (pid.gpu || '—') + '</b></div></div>' +
+        '(' + (pid.device_kind === 'BUKAN_APPLE' ? 'sistem bukan iOS/iPadOS' : 'chip bukan Apple') +
+        (pid.gpu ? ' • chip: ' + esc(pid.gpu) : '') + ')</span></div>' +
+        '<div class="card"><div class="row"><span>Sistem</span><b>' + sistem + '</b></div>' +
+        '<div class="row"><span>GPU</span><b>' + (pid.gpu ? esc(pid.gpu) : '—') + '</b></div></div>' +
         '<button class="btn" id="kirim">KIRIM TEMUAN KE PENAKSIR</button></div>');
       show(c);
       c.querySelector('#kirim').onclick = function () { kirimHasil(true); };
@@ -215,35 +297,55 @@ function layarIdentitas() {
   });
 }
 
+// Escape utk teks/atribut HTML — label iPad memuat petik ganda (mis. iPad Pro 9.7") dan GPU dari luar.
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function optgroupModel(label, tabel) {
+  var o = '<optgroup label="' + label + '">';
+  for (var k in tabel) o += '<option value="' + esc(k) + '">' + esc(k) + '</option>';
+  return o + '</optgroup>';
+}
 function layarPilihModel() {
-  var opts = '<option value="">— pilih model —</option>';
-  for (var k in SPEC) opts += '<option value="' + k + '">' + k + '</option>';
   var pid = S.pwaIdentity;
+  var ipad = isIpad();
+  // Grup yang sesuai jenis perangkat ditaruh paling atas; grup lain tetap bisa dipilih (deteksi bisa keliru).
+  var opts = '<option value="">— pilih model —</option>' +
+    (ipad ? optgroupModel('iPad', SPEC_IPAD) + optgroupModel('iPhone', SPEC_IPHONE)
+          : optgroupModel('iPhone', SPEC_IPHONE) + optgroupModel('iPad', SPEC_IPAD)) +
+    '<option value="' + esc(MODEL_LAIN) + '">' + esc(MODEL_LAIN) + '</option>';
   var c = el('<div>' +
-    '<div class="alert green center">✓ iPhone asli terdeteksi (chip Apple)</div>' +
-    '<div class="card"><b>Model yang diklaim penjual/nasabah:</b><br><br>' +
+    '<div class="alert green center">✓ ' + (ipad ? 'iPad' : 'iPhone') + ' asli terdeteksi (chip Apple)</div>' +
+    '<div class="card"><b>Model yang diklaim penjual/nasabah:</b>' +
+    '<p class="muted" style="margin:6px 0 10px">Lihat <b>Settings → General → About → Model Name</b></p>' +
     '<select id="model">' + opts + '</select>' +
     '<div id="hasil"></div>' +
     '<button class="btn" id="lanjut" disabled>LANJUT</button></div>' +
     '<div class="card muted">Terbaca: layar ' + Math.min(pid.screen_w_pts,pid.screen_h_pts) + '×' +
     Math.max(pid.screen_w_pts,pid.screen_h_pts) + ' @' + pid.dpr + 'x • ' + pid.fps_measured + ' fps • ' +
-    (pid.gpu || 'GPU —') + '</div></div>');
+    (pid.gpu ? esc(pid.gpu) : 'GPU —') + (pid.ua_desktop_mode ? ' • Safari mode desktop (iPad)' : '') + '</div></div>');
   show(c);
   var sel = c.querySelector('#model'), hasil = c.querySelector('#hasil'), btn = c.querySelector('#lanjut');
   sel.onchange = function () {
     var key = sel.value;
     if (!key) { btn.disabled = true; hasil.innerHTML = ''; return; }
     var m = cocokkanModel(key);
+    if (!m) { btn.disabled = true; hasil.innerHTML = ''; return; }
     S.deviceIdentity.model_claimed = key;
     S.pwaIdentity.model_check = m;
     var html = '';
-    if (m.resolution_match) html += '<div class="alert green">🟢 Layar cocok dgn spek ' + key + '</div>';
+    if (m.unknown_model) html += '<div class="alert yellow">🟡 Model belum ada di tabel — cek <b>Settings → General → About → Model Name</b> ' +
+      'dan catat manual. Layar terbaca ' + Math.min(pid.screen_w_pts,pid.screen_h_pts) + '×' +
+      Math.max(pid.screen_w_pts,pid.screen_h_pts) + ' @' + pid.dpr + 'x' + (m.promo_status === 'TERUKUR_120' ? ' • 120Hz terukur' : '') + '</div>';
+    else if (m.resolution_match) html += '<div class="alert green">🟢 Layar cocok dgn spek ' + esc(key) + '</div>';
     else html += '<div class="alert red">🔴 Layar TIDAK cocok dgn spek model ini (' +
       m.expected.w + '×' + m.expected.h + ' @' + m.expected.d + 'x) — model palsu / layar diganti?</div>';
     if (m.promo_expected === true) {
       if (m.promo_status === 'OK') html += '<div class="alert green">🟢 ProMotion 120Hz terukur (' + m.promo_measured_fps + ' fps) — layar asli</div>';
       else if (m.promo_status === 'TIDAK_TERUKUR') html += '<div class="alert yellow">🟡 Refresh rate tidak terukur. ' +
         '<a href="#" id="ulang">Ukur ulang</a> (jaga halaman tetap terbuka).</div>';
+      else if (m.promo_status === 'TIDAK_TERUKUR_IPAD') html += '<div class="alert yellow">🟡 ProMotion tidak terukur (' + m.promo_measured_fps + ' fps) — ' +
+        'Safari iPad sering membatasi 60 fps, bukan bukti layar diganti (info).</div>';
       else html += '<div class="alert yellow">🟡 ProMotion TIDAK terukur 120Hz (' + m.promo_measured_fps + ' fps). ' +
         'Matikan Low Power Mode (Settings→Battery) lalu <a href="#" id="ulang">ukur ulang</a>. ' +
         'Tetap 60 = layar kemungkinan diganti panel non-ori.</div>';
@@ -397,7 +499,7 @@ function tesTouch(next) {
 }
 function tesGhost(next) {
   var detik = 10, events = 0;
-  var ov = el('<div style="position:fixed;inset:0;z-index:99;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px" id="ov"><div><h2>TES GHOST TOUCH</h2><p id="t" style="font-size:40px;margin:8px">10</p><p>LETAKKAN iPHONE, JANGAN DISENTUH</p><p id="e" class="warn"></p></div></div>');
+  var ov = el('<div style="position:fixed;inset:0;z-index:99;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px" id="ov"><div><h2>TES GHOST TOUCH</h2><p id="t" style="font-size:40px;margin:8px">10</p><p>LETAKKAN ' + namaPerangkat().toUpperCase() + ', JANGAN DISENTUH</p><p id="e" class="warn"></p></div></div>');
   document.body.appendChild(ov);
   function onT(e) { e.preventDefault(); events++; ov.querySelector('#e').textContent = 'Sentuhan terdeteksi: ' + events; }
   ov.addEventListener('touchstart', onT, {passive:false});
@@ -519,7 +621,7 @@ function tesKamera(facing, key, judul, next) {
 function tesMotion(next) {
   var mulai = Date.now();
   var c = el('<div><div class="card center"><b>TES SENSOR GERAK</b>' +
-    '<p>Goyang & putar iPhone beberapa kali.</p><p id="st" class="muted">Menunggu izin sensor…</p></div><div id="vb"></div></div>');
+    '<p>Goyang & putar ' + namaPerangkat() + ' beberapa kali.</p><p id="st" class="muted">Menunggu izin sensor…</p></div><div id="vb"></div></div>');
   show(c);
   var maxAcc = 0, pasang = function () {
     window.addEventListener('devicemotion', function (e) {
@@ -577,12 +679,31 @@ function simpanWizard(key, value, note, mulai, skipped) {
 }
 
 // definisi item: [key, judul, instruksi, krusial, opsi [label, value, css]]
+// cyc: true/false dari tabel; null = model tidak dikenal (MODEL_LAIN) → kolom cycle tetap ditawarkan.
+function cycTampil() {
+  var sp = SPEC[S.deviceIdentity.model_claimed || ''];
+  return sp ? sp.cyc : null;
+}
 function itemWizard() {
-  var claim = S.deviceIdentity.model_claimed || '';
-  var sp = SPEC[claim] || {};
+  var nm = namaPerangkat();
+  var ipad = isIpad();
+  var cyc = cycTampil();
+  // Opsi khusus iPad: tanpa slot SIM (iPad WiFi). Tidak ditawarkan di iPhone supaya tes krusial
+  // tidak bisa "dilewati" lewat pilihan ini.
+  var simOpsi = [
+    ['🟢 TERSAMBUNG — sinyal & telepon normal', 'TERSAMBUNG', 'hijau'],
+    ['🔴 GAGAL — tidak ada layanan/tidak tersambung', 'GAGAL', 'merah']
+  ];
+  if (ipad) simOpsi.push(['🟡 Tidak ada slot SIM (iPad WiFi)', 'TANPA_SIM', 'kuning']);
+  var lciOpsi = [
+    ['🟢 PUTIH/kering', 'KERING', 'hijau'],
+    ['🔴 MERAH/PINK — bekas kena cairan', 'MERAH', 'merah'],
+    ['🟡 Tidak terlihat jelas', 'TIDAK_TERLIHAT', 'kuning']
+  ];
+  if (ipad) lciOpsi.push(['🟡 Tidak ada slot SIM', 'TANPA_SLOT', 'kuning']);
   return [
     ['icloud_findmy', '1. AKUN iCLOUD / FIND MY (PALING PENTING)',
-      'Buka <b>Settings → [nama paling atas]</b>.<br>WAJIB: minta nasabah <b>LOGOUT/Sign Out</b> akun iCloud-nya DI DEPAN ANDA (perlu password asli — pencuri/bypass tidak bisa).<br>Setelah logout, bagian atas Settings harus berubah jadi "Sign in to your iPhone".',
+      'Buka <b>Settings → [nama paling atas]</b>.<br>WAJIB: minta nasabah <b>LOGOUT/Sign Out</b> akun iCloud-nya DI DEPAN ANDA (perlu password asli — pencuri/bypass tidak bisa).<br>Setelah logout, bagian atas Settings harus berubah jadi "Sign in to your ' + nm + '".',
       true, [
         ['🟢 SUDAH LOGOUT / tidak ada akun', 'CLEAN_LOGGED_OUT', 'hijau'],
         ['🔴 MASIH LOGIN (nasabah tidak mau/tidak bisa)', 'MASIH_LOGIN', 'merah'],
@@ -604,7 +725,7 @@ function itemWizard() {
         ['🟡 Baris tidak ada', 'TIDAK_ADA', 'kuning']
       ]],
     ['model_number', '4. MODEL NUMBER → REGION', '_INPUT_MODEL_', false, null],
-    ['battery_settings', '5. BATTERY HEALTH' + (sp.cyc ? ' + CYCLE COUNT' : ''), '_INPUT_BATTERY_', false, null],
+    ['battery_settings', '5. BATTERY HEALTH' + (cyc === true ? ' + CYCLE COUNT' : cyc === null ? ' (+ CYCLE COUNT bila ada)' : ''), '_INPUT_BATTERY_', false, null],
     ['true_tone', '6. TRUE TONE (deteksi layar pernah diganti)',
       'Buka <b>Settings → Display & Brightness</b>.<br>Apakah ada toggle <b>True Tone</b>?',
       false, [
@@ -612,26 +733,20 @@ function itemWizard() {
         ['🟡 TIDAK ADA (di model yang seharusnya ada = layar pernah diganti)', 'TIDAK_ADA', 'kuning']
       ]],
     ['faceid_touchid', '7. FACE ID / TOUCH ID',
-      'Kunci iPhone, lalu coba buka dengan <b>wajah/sidik jari</b> nasabah.',
+      'Kunci ' + nm + ', lalu coba buka dengan <b>wajah/sidik jari</b> nasabah.',
       false, [
         ['🟢 BERFUNGSI (terbuka)', 'BAGUS', 'hijau'],
         ['🔴 TIDAK berfungsi / "Face ID not available"', 'RUSAK', 'merah'],
         ['🟡 Belum diatur (tidak terdaftar)', 'TIDAK_DIATUR', 'kuning']
       ]],
     ['sim_call', '8. TES TELEPON SIM (filter bypass sinyal)',
-      'Pasang SIM (boleh SIM penaksir) → lakukan <b>panggilan keluar</b>.<br>iPhone hasil bypass biasanya TIDAK bisa menelepon.',
-      true, [
-        ['🟢 TERSAMBUNG — sinyal & telepon normal', 'TERSAMBUNG', 'hijau'],
-        ['🔴 GAGAL — tidak ada layanan/tidak tersambung', 'GAGAL', 'merah']
-      ]],
+      'Pasang SIM (boleh SIM penaksir) → lakukan <b>panggilan keluar</b>' + (ipad ? ' (iPad Cellular: cek sinyal/data seluler)' : '') +
+      '.<br>' + nm + ' hasil bypass biasanya TIDAK bisa menelepon.',
+      true, simOpsi],
     ['storage_capacity', '9. KAPASITAS', '_INPUT_STORAGE_', false, null],
     ['lci', '10. INDIKATOR CAIRAN (LCI) di slot SIM',
       'Keluarkan tray SIM, senter lubang slot: titik indikator <b>putih = kering</b>, <b>merah/pink = pernah kena cairan</b>.',
-      false, [
-        ['🟢 PUTIH/kering', 'KERING', 'hijau'],
-        ['🔴 MERAH/PINK — bekas kena cairan', 'MERAH', 'merah'],
-        ['🟡 Tidak terlihat jelas', 'TIDAK_TERLIHAT', 'kuning']
-      ]]
+      false, lciOpsi]
   ];
 }
 
@@ -666,12 +781,15 @@ function layarWizard() {
       return;
     }
     if (instr === '_INPUT_BATTERY_') {
-      var sp = SPEC[S.deviceIdentity.model_claimed] || {};
+      // cyc null = model tidak dikenal → kolom cycle tetap ditawarkan (model baru umumnya menampilkannya)
+      var cyc = cycTampil();
+      var tanyaCyc = cyc === true || cyc === null;
       var c2 = el('<div><div class="card"><b>' + judul + '</b>' +
         '<p>Buka <b>Settings → Battery → Battery Health</b> → catat <b>Maximum Capacity</b>.' +
-        (sp.cyc ? '<br>Lalu <b>Settings → General → About</b> → catat <b>Cycle Count</b>.' : '') + '</p>' +
+        (tanyaCyc ? '<br>Lalu <b>Settings → General → About</b> → catat <b>Cycle Count</b>' + (cyc === null ? ' (bila ada)' : '') + '.' : '') +
+        (isIpad() ? '<br><span class="warn">Kebanyakan iPad tidak punya menu Battery Health — bila tidak ada, Lewati.</span>' : '') + '</p>' +
         '<input id="bh" type="number" min="1" max="100" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Battery Health % (mis. 87)">' +
-        (sp.cyc ? '<br><br><input id="cy" type="number" min="0" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Cycle Count (mis. 412)">' : '') +
+        (tanyaCyc ? '<br><br><input id="cy" type="number" min="0" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Cycle Count (mis. 412)">' : '') +
         '<button class="btn" id="ok">SIMPAN & LANJUT</button>' +
         '<button class="btn sec" id="skip">Lewati</button></div></div>');
       show(c2);
@@ -680,7 +798,8 @@ function layarWizard() {
         var cyEl = c2.querySelector('#cy');
         var cy = cyEl ? parseInt(cyEl.value, 10) : NaN;
         simpanWizard('battery_health_percent', isNaN(bh) ? null : bh, null, mulai);
-        simpanWizard('battery_cycle_count', isNaN(cy) ? null : cy, sp.cyc ? null : 'model tidak menampilkan cycle (cek via USB)', mulai);
+        simpanWizard('battery_cycle_count', isNaN(cy) ? null : cy,
+          cyc === false ? 'model tidak menampilkan cycle (cek via USB)' : (isNaN(cy) ? 'cycle tidak dicatat' : null), mulai);
         lanjut();
       };
       c2.querySelector('#skip').onclick = function () {
@@ -718,8 +837,8 @@ function layarWizard() {
     });
     c4.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati penaksir', mulai, true); lanjut(); };
   }
-  var intro = el('<div class="card center"><b>CEK SETTINGS iPHONE (10 langkah)</b>' +
-    '<p class="muted">Ikuti instruksi tiap langkah di Settings iPhone ini, lalu pilih hasilnya. ' +
+  var intro = el('<div class="card center"><b>CEK SETTINGS ' + namaPerangkat().toUpperCase() + ' (10 langkah)</b>' +
+    '<p class="muted">Ikuti instruksi tiap langkah di Settings ' + namaPerangkat() + ' ini, lalu pilih hasilnya. ' +
     'Langkah 1–3 & 8 paling penting — bila dilewati akan 🔴 di laporan.</p>' +
     '<button class="btn" id="go">▶ MULAI</button></div>');
   show(intro);
