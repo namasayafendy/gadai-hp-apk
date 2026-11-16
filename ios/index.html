@@ -151,6 +151,32 @@ var PART_PER_LACAK = { BATERAI:['BATERAI'], BATERAI_LAYAR:['BATERAI','LAYAR'], L
 var PART_LABEL = { BATERAI:'Baterai', LAYAR:'Layar', KAMERA:'Kamera', LOGIC_BOARD:'Logic Board' };
 // Nilai yang perlu tahu "part mana" (Genuine / Used / Finish Repair / Unknown).
 var NILAI_PER_PART = { ADA_SERVIS_RESMI:true, USED:true, FINISH_REPAIR:true, UNKNOWN_PART:true };
+// Tombol kedua di model tanpa menu (lacak TIDAK): kasir ternyata MENEMUKAN bagian Parts and Service History → model salah pilih
+// (kembar resolusi: X = XS/11 Pro/12 mini/13 mini, 6s/7/8 = SE 2020/2022). Bukan nilai yang disimpan — membuka opsi LENGKAP.
+var MENU_ADA = '_MENU_ADA_';
+// iOS TERAKHIR model yang tidak bisa iOS 17 (Apple: 6s/6s Plus/7/7 Plus berhenti di iOS 15, 8/8 Plus/X di iOS 16).
+// SALINAN gadai-tiket lib/iphone-bacaan.ts IOS_MAKS_MODEL (dikunci gadai-tiket scripts/uji-wizard-ios.mts). Dipakai:
+// (1) opsi 🟡 Security Delay hanya bila Stolen Device Protection mungkin (iOS 17.3+);
+// (2) model klaim MUSTAHIL bila iOS Safari lebih baru dari iOS terakhir model → peringatan + opsi Parts LENGKAP.
+var IOS_MAKS_MODEL = { 'iPhone 6s':15, 'iPhone 6s Plus':15, 'iPhone 7':15, 'iPhone 7 Plus':15, 'iPhone 8':16, 'iPhone 8 Plus':16, 'iPhone X':16 };
+var SDP_IOS_MIN = [17, 3];
+// ios_version_ua '17_5' → [17, 5]; null = tidak terbaca (mode desktop/iPad). iOS 26 membekukan UA di 18_6 (tetap ≥ 17.3, aman).
+function versiUa(v) {
+  var m = String(v == null ? '' : v).match(/^(\d+)_(\d+)/);
+  return m ? [+m[1], +m[2]] : null;
+}
+// true = Security Delay MUSTAHIL: iOS dari UA (mesin) didahulukan; tak terbaca → iOS terakhir model klaim.
+function sdpMustahil(model, iosUa) {
+  var v = versiUa(iosUa);
+  if (v) return v[0] < SDP_IOS_MIN[0] || (v[0] === SDP_IOS_MIN[0] && v[1] < SDP_IOS_MIN[1]);
+  return Object.prototype.hasOwnProperty.call(IOS_MAKS_MODEL, model);
+}
+// Model klaim mustahil: iOS Safari > iOS terakhir model (mis. iPhone X maks 16, terbaca 17.5) → {maks, terbaca}; selain itu null.
+function iosMelebihiModel(model, iosUa) {
+  var v = versiUa(iosUa);
+  if (!v || !Object.prototype.hasOwnProperty.call(IOS_MAKS_MODEL, model) || v[0] <= IOS_MAKS_MODEL[model]) return null;
+  return { maks: IOS_MAKS_MODEL[model], terbaca: v[0] + '.' + v[1] };
+}
 // SPEC gabungan: kunci = label model persis, dipakai cocokkanModel() & itemWizard().
 var SPEC = {};
 (function () {
@@ -356,6 +382,10 @@ function layarPilihModel() {
     else if (m.resolution_match) html += '<div class="alert green">🟢 Layar cocok dgn spek ' + esc(key) + '</div>';
     else html += '<div class="alert red">🔴 Layar TIDAK cocok dgn spek model ini (' +
       m.expected.w + '×' + m.expected.h + ' @' + m.expected.d + 'x) — model palsu / layar diganti?</div>';
+    // Kembar resolusi lolos cocok layar — iOS Safari bisa membuktikan model klaim mustahil (laporan: 🟡 Model klaim)
+    var mustahil = iosMelebihiModel(key, pid.ios_version_ua);
+    if (mustahil) html += '<div class="alert red">🔴 ' + esc(key) + ' maksimal iOS ' + mustahil.maks + ', tapi iPhone ini iOS ' +
+      mustahil.terbaca + ' — model SALAH PILIH. Cek <b>Settings → General → About → Model Name</b> lalu pilih ulang.</div>';
     if (m.promo_expected === true) {
       if (m.promo_status === 'OK') html += '<div class="alert green">🟢 ProMotion 120Hz terukur (' + m.promo_measured_fps + ' fps) — layar asli</div>';
       else if (m.promo_status === 'TIDAK_TERUKUR') html += '<div class="alert yellow">🟡 Refresh rate tidak terukur. ' +
@@ -372,7 +402,13 @@ function layarPilihModel() {
       S.pwaIdentity.fps_measured = f; sel.onchange(); }); };
     btn.disabled = false;
   };
-  btn.onclick = layarTesFisik;
+  btn.onclick = function () {
+    // model klaim mustahil menurut iOS → minta pilih ulang (tetap bisa lanjut: tercatat 🟡 di laporan, opsi Parts LENGKAP)
+    var salah = iosMelebihiModel(S.deviceIdentity.model_claimed || '', pid.ios_version_ua);
+    if (salah && !confirm((S.deviceIdentity.model_claimed || '') + ' tidak mungkin iOS ' + salah.terbaca +
+      ' (maksimal iOS ' + salah.maks + '). Model kemungkinan SALAH PILIH — lanjut tanpa memilih ulang?')) return;
+    layarTesFisik();
+  };
 }
 
 // ============================================================
@@ -702,11 +738,17 @@ function simpanWizard(key, value, note, mulai, skipped, extra) {
 function lacakParts() {
   var m = S.deviceIdentity.model_claimed || '';
   if (SPEC_IPAD[m] || (isIpad() && !SPEC_IPHONE[m])) return null;
+  // Model klaim mustahil menurut iOS Safari (iPhone X maks iOS 16, terbaca 17+) → model asli lebih baru → opsi LENGKAP
+  if (iosMelebihiModel(m, S.pwaIdentity.ios_version_ua)) return 'LENGKAP';
   return LACAK_PARTS[m] || 'LENGKAP';
 }
 // Opsi [label, value, css] per lacak. Value lama (ASLI_SEMUA/ADA_SERVIS_RESMI/UNKNOWN_PART/TIDAK_ADA_MENU) dipertahankan.
+// Lacak TIDAK: + tombol MENU_ADA (bukan nilai) — jalan keluar bila model salah pilih dan menu ternyata ada.
 function opsiParts(lacak) {
-  if (lacak === 'TIDAK') return [['ℹ️ Benar, menu tidak ada — LANJUT', 'TIDAK_DILACAK', 'info']];
+  if (lacak === 'TIDAK') return [
+    ['ℹ️ Benar, menu tidak ada — LANJUT', 'TIDAK_DILACAK', 'info'],
+    ['⚠️ Ternyata ADA bagian "Parts and Service History" / tulisan "Unknown Part"', MENU_ADA, 'kuning']
+  ];
   if (lacak === null) return [
     ['🟢 TIDAK ada bagian itu = belum pernah ganti parts', 'ASLI_SEMUA', 'hijau'],
     ['🟡 Ada riwayat servis RESMI Apple (Genuine Part)', 'ADA_SERVIS_RESMI', 'kuning'],
@@ -728,11 +770,22 @@ function opsiParts(lacak) {
   );
   return o;
 }
+// Opsi sesudah MENU_ADA: bagian itu memang tampil → tanpa "tidak ada bagian" & "iOS < 15.2"; part dicentang dari daftar LENGKAP.
+function opsiMenuAda() {
+  return opsiParts('LENGKAP').filter(function (o) { return o[1] !== 'ASLI_SEMUA' && o[1] !== 'TIDAK_ADA_MENU'; });
+}
+function instruksiMenuAda() {
+  return '<span class="warn">Model ' + esc(S.deviceIdentity.model_claimed || '') + ' seharusnya TIDAK punya menu ini — model yang dipilih ' +
+    'kemungkinan SALAH (akan 🟡 di laporan; pastikan Model Name &amp; tipe di tiket).</span><br>' +
+    'Pilih tulisan yang tampil di <b>"Parts and Service History"</b>. Bila ada beberapa tulisan berbeda, pilih yang <b>PALING MERAH</b>.';
+}
 // Teks instruksi per lacak (HTML).
 function instruksiParts(lacak) {
   if (lacak === null) return 'Buka <b>Settings → General → About</b>.<br>Lihat apakah ada bagian <b>"Parts and Service History"</b> atau peringatan <b>"Unknown Part"</b> ⚠️.';
   if (lacak === 'TIDAK') return '<span class="warn">Model ' + esc(S.deviceIdentity.model_claimed || '') +
-    ' TIDAK punya menu Parts and Service History</span> (Apple baru melacak sejak iPhone XR/XS). Ini normal.';
+    ' TIDAK punya menu Parts and Service History</span> (Apple baru melacak sejak iPhone XR/XS). Ini normal.' +
+    '<br>Tetap lihat <b>Settings → General → About</b> sebentar: bila ternyata ADA bagian <b>"Parts and Service History"</b> ' +
+    'atau tulisan <b>"Unknown Part"</b>, model yang dipilih salah — ketuk tombol ⚠️ di bawah.';
   var dilacak = lacak === 'BATERAI'
     ? 'Di model ini Apple HANYA melacak <b>BATERAI</b> — layar/kamera ganti KW TIDAK akan muncul di sini (andalkan tes layar & True Tone).'
     : lacak === 'BATERAI_LAYAR'
@@ -777,9 +830,11 @@ function itemWizard() {
   ];
   if (ipad) lciOpsi.push(['🟡 Tidak ada slot SIM', 'TANPA_SLOT', 'kuning']);
   // v0.7: Stolen Device Protection (iOS 17.3+) menahan Sign Out 1 jam di luar lokasi dikenal ("Security Delay") —
-  // bukan bypass. Hanya iPhone (iPad tidak ditawari).
+  // bukan bypass. Hanya iPhone (iPad tidak ditawari) DAN hanya bila mungkin: iOS Safari ≥ 17.3 (tak terbaca → model
+  // klaim bukan 6s–X). Di iOS lebih lama layar itu mustahil — tidak bisa logout tetap 🔴 indikasi bypass.
+  var sdp = !ipad && !sdpMustahil(S.deviceIdentity.model_claimed || '', S.pwaIdentity.ios_version_ua);
   var icloudOpsi = [['🟢 SUDAH LOGOUT / tidak ada akun', 'CLEAN_LOGGED_OUT', 'hijau']];
-  if (!ipad) icloudOpsi.push(['🟡 TERTAHAN "Security Delay" — iPhone minta tunggu 1 jam (Stolen Device Protection)', 'TUNDA_SDP', 'kuning']);
+  if (sdp) icloudOpsi.push(['🟡 TERTAHAN "Security Delay" — iPhone minta tunggu 1 jam (Stolen Device Protection)', 'TUNDA_SDP', 'kuning']);
   icloudOpsi.push(
     ['🔴 MASIH LOGIN (nasabah tidak mau/tidak bisa)', 'MASIH_LOGIN', 'merah'],
     ['🔴 TIDAK BISA LOGOUT (error/aneh — indikasi bypass!)', 'TIDAK_BISA_LOGOUT', 'merah']
@@ -787,7 +842,7 @@ function itemWizard() {
   return [
     ['icloud_findmy', '1. AKUN iCLOUD / FIND MY (PALING PENTING)',
       'Buka <b>Settings → [nama paling atas]</b>.<br>WAJIB: minta nasabah <b>LOGOUT/Sign Out</b> akun iCloud-nya DI DEPAN ANDA (perlu password asli — pencuri/bypass tidak bisa).<br>Setelah logout, bagian atas Settings harus berubah jadi "Sign in to your ' + nm + '".' +
-      (ipad ? '' : '<br><span class="warn">Muncul "Security Delay" / iPhone minta menunggu 1 jam? Itu fitur Stolen Device Protection (iOS 17.3+), BUKAN tanda bypass — pilih opsi 🟡 di bawah. Logout tetap WAJIB selesai sebelum uang dicairkan.</span>'),
+      (!sdp ? '' : '<br><span class="warn">Muncul "Security Delay" / iPhone minta menunggu 1 jam? Itu fitur Stolen Device Protection (iOS 17.3+), BUKAN tanda bypass — pilih opsi 🟡 di bawah. Logout tetap WAJIB selesai sebelum uang dicairkan.</span>'),
       true, icloudOpsi],
     // v0.7: opsi & teks mengikuti model (lacakParts) — layar sendiri '_PARTS_' (+ layar "Part mana?")
     ['parts_history', '2. KEASLIAN SPAREPART (Parts & Service History)', '_PARTS_', true, null],
@@ -825,36 +880,47 @@ function itemWizard() {
 }
 
 // Item 2 (v0.7): opsi sesuai model → (bila perlu) layar "Part mana?" → simpan {value, lacak, parts}.
+// Model tanpa menu (lacak TIDAK) + tombol ⚠️ MENU_ADA: opsi LENGKAP tanpa "tidak ada bagian" → simpan + menu_ada:true
+// (relay/tiket: 🟡 Model klaim — cek Model Name). lacak yang disimpan tetap lacak model klaim.
 function layarParts(key, judul, krusial, mulai, lanjut) {
   var lacak = lacakParts();
-  var opsi = opsiParts(lacak);
+  var menuAda = false;
+  // lacak untuk daftar part & part otomatis: menu ditemukan di model "tanpa menu" → model asli tak diketahui → LENGKAP
+  function lacakPart() { return menuAda ? 'LENGKAP' : lacak; }
   function simpan(value, parts) {
-    simpanWizard(key, value, null, mulai, false, { lacak: lacak, parts: parts });
+    var extra = { lacak: lacak, parts: parts };
+    if (menuAda) extra.menu_ada = true;
+    simpanWizard(key, value, null, mulai, false, extra);
     lanjut();
   }
   function pilihOpsi() {
-    var html = '<div><div class="card"><b>' + judul + '</b><p style="font-size:15px">' + instruksiParts(lacak) + '</p></div><div class="card">';
+    var opsi = menuAda ? opsiMenuAda() : opsiParts(lacak);
+    var html = '<div><div class="card"><b>' + judul + '</b><p style="font-size:15px">' + (menuAda ? instruksiMenuAda() : instruksiParts(lacak)) + '</p></div><div class="card">';
     for (var o = 0; o < opsi.length; o++) html += '<button class="btn sec op" data-o="' + o + '" style="text-align:left">' + opsi[o][0] + '</button>';
-    // Model tanpa menu: tidak ada yang bisa dilewati (satu tombol LANJUT saja)
-    if (lacak !== 'TIDAK') html += '<button class="btn sec" id="skip" style="color:#999">Lewati item ini (akan 🔴 di laporan!)</button>';
+    // Model tanpa menu: tidak ada yang bisa dilewati (LANJUT atau ⚠️ menu ternyata ada)
+    if (menuAda) html += '<button class="btn sec" id="balik">← Kembali (ternyata menu tidak ada)</button>';
+    else if (lacak !== 'TIDAK') html += '<button class="btn sec" id="skip" style="color:#999">Lewati item ini (akan 🔴 di laporan!)</button>';
     html += '</div></div>';
     var c = el(html); show(c);
     c.querySelectorAll('.op').forEach(function (b) {
       b.onclick = function () {
         var op = opsi[+b.getAttribute('data-o')];
+        if (op[1] === MENU_ADA) { menuAda = true; pilihOpsi(); return; }
         // konfirmasi 2-langkah (anti asal-ketuk) — kecuali model tanpa menu: memang tidak ada yang dibuka
         if (krusial && op[1] !== 'TIDAK_DILACAK' && (Date.now() - mulai) < 4000) {
           if (!confirm('Yakin sudah benar-benar membuka menu Settings-nya? (baru ' + Math.round((Date.now()-mulai)/1000) + ' dtk)')) return;
         }
-        if (perluCentangPart(lacak, op[1])) pilihPart(op);
-        else simpan(op[1], partsOtomatis(lacak, op[1]));
+        if (perluCentangPart(lacakPart(), op[1])) pilihPart(op);
+        else simpan(op[1], partsOtomatis(lacakPart(), op[1]));
       };
     });
     var sk = c.querySelector('#skip');
     if (sk) sk.onclick = function () { simpanWizard(key, null, 'dilewati penaksir', mulai, true, { lacak: lacak, parts: null }); lanjut(); };
+    var bl = c.querySelector('#balik');
+    if (bl) bl.onclick = function () { menuAda = false; pilihOpsi(); };
   }
   function pilihPart(op) {
-    var daftar = PART_PER_LACAK[lacak], pilih = {};
+    var daftar = PART_PER_LACAK[lacakPart()], pilih = {};
     var html = '<div><div class="card"><b>Part mana?</b><p style="font-size:15px">Pilihan Anda: ' + op[0] +
       '<br><br>Centang SEMUA part yang bertulisan begitu di Parts and Service History (minimal 1):</p>';
     for (var x = 0; x < daftar.length; x++) html += '<button class="btn sec pt" data-p="' + daftar[x] + '" style="text-align:left">☐ ' + PART_LABEL[daftar[x]] + '</button>';
