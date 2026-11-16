@@ -40,7 +40,7 @@
 <div class="wrap">
   <div class="head">
     <h1>📱 Cek iPhone Gadai</h1>
-    <div class="sub">DRPE iOS v0.6 • tanpa install • tidak menyimpan data</div>
+    <div class="sub">DRPE iOS v0.7 • tanpa install • tidak menyimpan data</div>
   </div>
   <div id="app"></div>
 </div>
@@ -135,6 +135,22 @@ var SPEC_IPAD = {
 };
 // Pilihan terakhir dropdown: model belum ada di tabel (rilis baru) → 🟡 minta cek manual, bukan 🔴.
 var MODEL_LAIN = 'Model lain / lebih baru (tidak ada di daftar)';
+// v0.7 — Parts and Service History: apa yang DILACAK iOS per model (Apple support 102658 & 103256).
+// TIDAK = menu tidak ada (iPhone X ke bawah); BATERAI = hanya baterai; BATERAI_LAYAR = baterai + layar (iPhone 11);
+// LENGKAP = baterai, layar, kamera, logic board (iPhone 12 ke atas). Model iPhone yang tidak ada di peta ini
+// (iPhone 12+, rilis baru, MODEL_LAIN) = LENGKAP. iPad = null (teks & opsi umum seperti v0.6).
+var LACAK_PARTS = {
+  'iPhone 6s':'TIDAK', 'iPhone 6s Plus':'TIDAK', 'iPhone 7':'TIDAK', 'iPhone 7 Plus':'TIDAK',
+  'iPhone 8':'TIDAK', 'iPhone 8 Plus':'TIDAK', 'iPhone X':'TIDAK',
+  'iPhone XR':'BATERAI', 'iPhone XS':'BATERAI', 'iPhone XS Max':'BATERAI',
+  'iPhone SE (2020)':'BATERAI', 'iPhone SE (2022)':'BATERAI',
+  'iPhone 11':'BATERAI_LAYAR', 'iPhone 11 Pro':'BATERAI_LAYAR', 'iPhone 11 Pro Max':'BATERAI_LAYAR'
+};
+// Part yang bisa dicentang per lacak (urutan tampil) + nama tampil (value dikirim apa adanya ke relay).
+var PART_PER_LACAK = { BATERAI:['BATERAI'], BATERAI_LAYAR:['BATERAI','LAYAR'], LENGKAP:['BATERAI','LAYAR','KAMERA','LOGIC_BOARD'] };
+var PART_LABEL = { BATERAI:'Baterai', LAYAR:'Layar', KAMERA:'Kamera', LOGIC_BOARD:'Logic Board' };
+// Nilai yang perlu tahu "part mana" (Genuine / Used / Finish Repair / Unknown).
+var NILAI_PER_PART = { ADA_SERVIS_RESMI:true, USED:true, FINISH_REPAIR:true, UNKNOWN_PART:true };
 // SPEC gabungan: kunci = label model persis, dipakai cocokkanModel() & itemWizard().
 var SPEC = {};
 (function () {
@@ -670,12 +686,71 @@ var REGION_MAP = { PA:'Indonesia (resmi)', ID:'Indonesia (resmi)', ZP:'Hong Kong
   CH:'China', J:'Jepang', KH:'Korea', ZA:'Singapura', MY:'Malaysia', X:'Australia', B:'Inggris',
   AE:'Emirat/Arab', AH:'Bahrain/Kuwait', HN:'India', TH:'Thailand', VN:'Vietnam' };
 
-function simpanWizard(key, value, note, mulai, skipped) {
-  S.settingsChecks[key] = {
+// extra (v0.7): field tambahan digabung ke item (parts_history: lacak + parts).
+function simpanWizard(key, value, note, mulai, skipped, extra) {
+  var o = {
     value: value, note: note || null,
     duration_sec: Math.round((Date.now() - mulai) / 1000),
     skipped: !!skipped
   };
+  if (extra) for (var k in extra) o[k] = extra[k];
+  S.settingsChecks[key] = o;
+}
+
+// ---- Parts and Service History (v0.7): opsi sadar model ----
+// null = iPad (atau model iPad) → teks & opsi umum; selain itu TIDAK / BATERAI / BATERAI_LAYAR / LENGKAP.
+function lacakParts() {
+  var m = S.deviceIdentity.model_claimed || '';
+  if (SPEC_IPAD[m] || (isIpad() && !SPEC_IPHONE[m])) return null;
+  return LACAK_PARTS[m] || 'LENGKAP';
+}
+// Opsi [label, value, css] per lacak. Value lama (ASLI_SEMUA/ADA_SERVIS_RESMI/UNKNOWN_PART/TIDAK_ADA_MENU) dipertahankan.
+function opsiParts(lacak) {
+  if (lacak === 'TIDAK') return [['ℹ️ Benar, menu tidak ada — LANJUT', 'TIDAK_DILACAK', 'info']];
+  if (lacak === null) return [
+    ['🟢 TIDAK ada bagian itu = belum pernah ganti parts', 'ASLI_SEMUA', 'hijau'],
+    ['🟡 Ada riwayat servis RESMI Apple (Genuine Part)', 'ADA_SERVIS_RESMI', 'kuning'],
+    ['🔴 Ada "UNKNOWN PART" ⚠️ (parts non-ori!)', 'UNKNOWN_PART', 'merah'],
+    ['🟡 Menu tidak ada (iOS lama < 15.2)', 'TIDAK_ADA_MENU', 'kuning']
+  ];
+  var o = [
+    ['🟢 TIDAK ada bagian "Parts and Service History"', 'ASLI_SEMUA', 'hijau'],
+    ['🟡 Ada, semua bertulisan "Genuine" (ganti part ASLI Apple)', 'ADA_SERVIS_RESMI', 'kuning']
+  ];
+  if (lacak === 'LENGKAP') o.push(
+    ['🟡 Ada tulisan "Used" (part asli BEKAS dari iPhone lain)', 'USED', 'kuning'],
+    ['🟡 Ada tulisan "Finish Repair" (perbaikan belum selesai / part bisa terkunci akun lain)', 'FINISH_REPAIR', 'kuning'],
+    ['🔴 Logic Board "Unverified" (papan induk pernah diganti — indikasi mesin rakitan)', 'UNVERIFIED', 'merah']
+  );
+  o.push(
+    ['🔴 Ada "Unknown" / "Unknown Part" / "Important … Message" ⚠️ (part NON-ORI / tidak terverifikasi)', 'UNKNOWN_PART', 'merah'],
+    ['🟡 iOS di bawah 15.2 (Settings → General → About → iOS Version)', 'TIDAK_ADA_MENU', 'kuning']
+  );
+  return o;
+}
+// Teks instruksi per lacak (HTML).
+function instruksiParts(lacak) {
+  if (lacak === null) return 'Buka <b>Settings → General → About</b>.<br>Lihat apakah ada bagian <b>"Parts and Service History"</b> atau peringatan <b>"Unknown Part"</b> ⚠️.';
+  if (lacak === 'TIDAK') return '<span class="warn">Model ' + esc(S.deviceIdentity.model_claimed || '') +
+    ' TIDAK punya menu Parts and Service History</span> (Apple baru melacak sejak iPhone XR/XS). Ini normal.';
+  var dilacak = lacak === 'BATERAI'
+    ? 'Di model ini Apple HANYA melacak <b>BATERAI</b> — layar/kamera ganti KW TIDAK akan muncul di sini (andalkan tes layar & True Tone).'
+    : lacak === 'BATERAI_LAYAR'
+      ? 'Di model ini Apple melacak <b>BATERAI dan LAYAR</b> (kamera tidak dilacak di iPhone 11).'
+      : 'Apple melacak <b>Baterai, Layar, Kamera, dan Logic Board</b>.';
+  return 'Buka <b>Settings → General → About</b>, cari bagian <b>"Parts and Service History"</b>.<br>' + dilacak +
+    '<br>Bila ada beberapa tulisan berbeda, pilih yang <b>PALING MERAH</b>.' +
+    '<br><span class="muted">iOS 15.1 ke bawah: peringatan tampil sebagai "Important Battery Message" / "Important Display Message".</span>';
+}
+// Part otomatis tanpa layar centang: lacak BATERAI → ['BATERAI']; Unverified → ['LOGIC_BOARD'];
+// null = tidak perlu part (ASLI/menu tidak ada) ATAU perlu dicentang kasir (cek perluCentangPart dulu).
+function partsOtomatis(lacak, value) {
+  if (value === 'UNVERIFIED') return ['LOGIC_BOARD'];
+  if (NILAI_PER_PART[value] && lacak === 'BATERAI') return ['BATERAI'];
+  return null;
+}
+function perluCentangPart(lacak, value) {
+  return !!NILAI_PER_PART[value] && (lacak === 'BATERAI_LAYAR' || lacak === 'LENGKAP');
 }
 
 // definisi item: [key, judul, instruksi, krusial, opsi [label, value, css]]
@@ -701,22 +776,21 @@ function itemWizard() {
     ['🟡 Tidak terlihat jelas', 'TIDAK_TERLIHAT', 'kuning']
   ];
   if (ipad) lciOpsi.push(['🟡 Tidak ada slot SIM', 'TANPA_SLOT', 'kuning']);
+  // v0.7: Stolen Device Protection (iOS 17.3+) menahan Sign Out 1 jam di luar lokasi dikenal ("Security Delay") —
+  // bukan bypass. Hanya iPhone (iPad tidak ditawari).
+  var icloudOpsi = [['🟢 SUDAH LOGOUT / tidak ada akun', 'CLEAN_LOGGED_OUT', 'hijau']];
+  if (!ipad) icloudOpsi.push(['🟡 TERTAHAN "Security Delay" — iPhone minta tunggu 1 jam (Stolen Device Protection)', 'TUNDA_SDP', 'kuning']);
+  icloudOpsi.push(
+    ['🔴 MASIH LOGIN (nasabah tidak mau/tidak bisa)', 'MASIH_LOGIN', 'merah'],
+    ['🔴 TIDAK BISA LOGOUT (error/aneh — indikasi bypass!)', 'TIDAK_BISA_LOGOUT', 'merah']
+  );
   return [
     ['icloud_findmy', '1. AKUN iCLOUD / FIND MY (PALING PENTING)',
-      'Buka <b>Settings → [nama paling atas]</b>.<br>WAJIB: minta nasabah <b>LOGOUT/Sign Out</b> akun iCloud-nya DI DEPAN ANDA (perlu password asli — pencuri/bypass tidak bisa).<br>Setelah logout, bagian atas Settings harus berubah jadi "Sign in to your ' + nm + '".',
-      true, [
-        ['🟢 SUDAH LOGOUT / tidak ada akun', 'CLEAN_LOGGED_OUT', 'hijau'],
-        ['🔴 MASIH LOGIN (nasabah tidak mau/tidak bisa)', 'MASIH_LOGIN', 'merah'],
-        ['🔴 TIDAK BISA LOGOUT (error/aneh — indikasi bypass!)', 'TIDAK_BISA_LOGOUT', 'merah']
-      ]],
-    ['parts_history', '2. KEASLIAN SPAREPART (Parts & Service History)',
-      'Buka <b>Settings → General → About</b>.<br>Lihat apakah ada bagian <b>"Parts and Service History"</b> atau peringatan <b>"Unknown Part"</b> ⚠️.',
-      true, [
-        ['🟢 TIDAK ada bagian itu = belum pernah ganti parts', 'ASLI_SEMUA', 'hijau'],
-        ['🟡 Ada riwayat servis RESMI Apple (Genuine Part)', 'ADA_SERVIS_RESMI', 'kuning'],
-        ['🔴 Ada "UNKNOWN PART" ⚠️ (parts non-ori!)', 'UNKNOWN_PART', 'merah'],
-        ['🟡 Menu tidak ada (iOS lama < 15.2)', 'TIDAK_ADA_MENU', 'kuning']
-      ]],
+      'Buka <b>Settings → [nama paling atas]</b>.<br>WAJIB: minta nasabah <b>LOGOUT/Sign Out</b> akun iCloud-nya DI DEPAN ANDA (perlu password asli — pencuri/bypass tidak bisa).<br>Setelah logout, bagian atas Settings harus berubah jadi "Sign in to your ' + nm + '".' +
+      (ipad ? '' : '<br><span class="warn">Muncul "Security Delay" / iPhone minta menunggu 1 jam? Itu fitur Stolen Device Protection (iOS 17.3+), BUKAN tanda bypass — pilih opsi 🟡 di bawah. Logout tetap WAJIB selesai sebelum uang dicairkan.</span>'),
+      true, icloudOpsi],
+    // v0.7: opsi & teks mengikuti model (lacakParts) — layar sendiri '_PARTS_' (+ layar "Part mana?")
+    ['parts_history', '2. KEASLIAN SPAREPART (Parts & Service History)', '_PARTS_', true, null],
     ['carrier_lock', '3. CARRIER LOCK (HP inter/BM terkunci operator)',
       'Masih di <b>Settings → General → About</b>, cari baris <b>Carrier Lock / Network Provider Lock</b>.',
       true, [
@@ -748,6 +822,59 @@ function itemWizard() {
       'Keluarkan tray SIM, senter lubang slot: titik indikator <b>putih = kering</b>, <b>merah/pink = pernah kena cairan</b>.',
       false, lciOpsi]
   ];
+}
+
+// Item 2 (v0.7): opsi sesuai model → (bila perlu) layar "Part mana?" → simpan {value, lacak, parts}.
+function layarParts(key, judul, krusial, mulai, lanjut) {
+  var lacak = lacakParts();
+  var opsi = opsiParts(lacak);
+  function simpan(value, parts) {
+    simpanWizard(key, value, null, mulai, false, { lacak: lacak, parts: parts });
+    lanjut();
+  }
+  function pilihOpsi() {
+    var html = '<div><div class="card"><b>' + judul + '</b><p style="font-size:15px">' + instruksiParts(lacak) + '</p></div><div class="card">';
+    for (var o = 0; o < opsi.length; o++) html += '<button class="btn sec op" data-o="' + o + '" style="text-align:left">' + opsi[o][0] + '</button>';
+    // Model tanpa menu: tidak ada yang bisa dilewati (satu tombol LANJUT saja)
+    if (lacak !== 'TIDAK') html += '<button class="btn sec" id="skip" style="color:#999">Lewati item ini (akan 🔴 di laporan!)</button>';
+    html += '</div></div>';
+    var c = el(html); show(c);
+    c.querySelectorAll('.op').forEach(function (b) {
+      b.onclick = function () {
+        var op = opsi[+b.getAttribute('data-o')];
+        // konfirmasi 2-langkah (anti asal-ketuk) — kecuali model tanpa menu: memang tidak ada yang dibuka
+        if (krusial && op[1] !== 'TIDAK_DILACAK' && (Date.now() - mulai) < 4000) {
+          if (!confirm('Yakin sudah benar-benar membuka menu Settings-nya? (baru ' + Math.round((Date.now()-mulai)/1000) + ' dtk)')) return;
+        }
+        if (perluCentangPart(lacak, op[1])) pilihPart(op);
+        else simpan(op[1], partsOtomatis(lacak, op[1]));
+      };
+    });
+    var sk = c.querySelector('#skip');
+    if (sk) sk.onclick = function () { simpanWizard(key, null, 'dilewati penaksir', mulai, true, { lacak: lacak, parts: null }); lanjut(); };
+  }
+  function pilihPart(op) {
+    var daftar = PART_PER_LACAK[lacak], pilih = {};
+    var html = '<div><div class="card"><b>Part mana?</b><p style="font-size:15px">Pilihan Anda: ' + op[0] +
+      '<br><br>Centang SEMUA part yang bertulisan begitu di Parts and Service History (minimal 1):</p>';
+    for (var x = 0; x < daftar.length; x++) html += '<button class="btn sec pt" data-p="' + daftar[x] + '" style="text-align:left">☐ ' + PART_LABEL[daftar[x]] + '</button>';
+    html += '<button class="btn" id="ok" disabled>SIMPAN & LANJUT</button>' +
+      '<button class="btn sec" id="balik">← Kembali ke pilihan</button></div></div>';
+    var c = el(html); show(c);
+    var ok = c.querySelector('#ok');
+    c.querySelectorAll('.pt').forEach(function (b) {
+      b.onclick = function () {
+        var p = b.getAttribute('data-p');
+        pilih[p] = !pilih[p];
+        b.textContent = (pilih[p] ? '☑ ' : '☐ ') + PART_LABEL[p];
+        b.style.background = pilih[p] ? '#d6e4fb' : '';
+        ok.disabled = !daftar.some(function (k) { return pilih[k]; });
+      };
+    });
+    ok.onclick = function () { simpan(op[1], daftar.filter(function (k) { return pilih[k]; })); };
+    c.querySelector('#balik').onclick = pilihOpsi;
+  }
+  pilihOpsi();
 }
 
 function layarWizard() {
@@ -784,9 +911,15 @@ function layarWizard() {
       // cyc null = model tidak dikenal → kolom cycle tetap ditawarkan (model baru umumnya menampilkannya)
       var cyc = cycTampil();
       var tanyaCyc = cyc === true || cyc === null;
+      // v0.7: iPhone 15 ke atas + iOS 17.4+ menampilkan Cycle Count di halaman Battery Health (Apple 106348);
+      // General → About hanya untuk iOS 17.0–17.3.
       var c2 = el('<div><div class="card"><b>' + judul + '</b>' +
-        '<p>Buka <b>Settings → Battery → Battery Health</b> → catat <b>Maximum Capacity</b>.' +
-        (tanyaCyc ? '<br>Lalu <b>Settings → General → About</b> → catat <b>Cycle Count</b>' + (cyc === null ? ' (bila ada)' : '') + '.' : '') +
+        (cyc === true
+          ? '<p>Buka <b>Settings → Battery → Battery Health</b> → catat <b>Maximum Capacity</b> dan <b>Cycle Count</b> ' +
+            '(iPhone 15 ke atas dgn iOS 17.4+: keduanya di halaman yang sama, bersama Manufacture Date & First Use). ' +
+            'iOS 17.0–17.3: Cycle Count ada di <b>Settings → General → About</b>.'
+          : '<p>Buka <b>Settings → Battery → Battery Health</b> → catat <b>Maximum Capacity</b>.' +
+            (cyc === null ? '<br>Cycle Count (bila ada): <b>Settings → Battery → Battery Health</b>, atau <b>Settings → General → About</b>.' : '')) +
         (isIpad() ? '<br><span class="warn">Kebanyakan iPad tidak punya menu Battery Health — bila tidak ada, Lewati.</span>' : '') + '</p>' +
         '<input id="bh" type="number" min="1" max="100" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Battery Health % (mis. 87)">' +
         (tanyaCyc ? '<br><br><input id="cy" type="number" min="0" style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:10px" placeholder="Cycle Count (mis. 412)">' : '') +
@@ -797,6 +930,9 @@ function layarWizard() {
         var bh = parseInt(c2.querySelector('#bh').value, 10);
         var cyEl = c2.querySelector('#cy');
         var cy = cyEl ? parseInt(cyEl.value, 10) : NaN;
+        // v0.7: model yang PASTI menampilkan Cycle Count (iPhone 15+) tapi kolom kosong → tanya sekali (batal = tetap di layar)
+        if (cyc === true && isNaN(cy) &&
+            !confirm('Cycle Count belum diisi. iPhone 15 ke atas menampilkannya di Settings → Battery → Battery Health. Lanjut tanpa Cycle Count?')) return;
         simpanWizard('battery_health_percent', isNaN(bh) ? null : bh, null, mulai);
         simpanWizard('battery_cycle_count', isNaN(cy) ? null : cy,
           cyc === false ? 'model tidak menampilkan cycle (cek via USB)' : (isNaN(cy) ? 'cycle tidak dicatat' : null), mulai);
@@ -819,6 +955,7 @@ function layarWizard() {
       c3.querySelector('#skip').onclick = function () { simpanWizard(key, null, 'dilewati', mulai, true); lanjut(); };
       return;
     }
+    if (instr === '_PARTS_') { layarParts(key, judul, krusial, mulai, lanjut); return; }
     // item pilihan biasa
     var html = '<div><div class="card"><b>' + judul + '</b><p style="font-size:15px">' + instr + '</p></div><div class="card">';
     for (var o = 0; o < opsi.length; o++) html += '<button class="btn sec op" data-o="' + o + '" style="text-align:left">' + opsi[o][0] + '</button>';
