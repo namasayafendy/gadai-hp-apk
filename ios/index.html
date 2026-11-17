@@ -40,7 +40,7 @@
 <div class="wrap">
   <div class="head">
     <h1>📱 Cek iPhone Gadai</h1>
-    <div class="sub">DRPE iOS v0.7 • tanpa install • tidak menyimpan data</div>
+    <div class="sub">DRPE iOS v0.7.1 • tanpa install • tidak menyimpan data</div>
   </div>
   <div id="app"></div>
 </div>
@@ -106,9 +106,17 @@ var SPEC_IPHONE = {
   'iPhone 16 Pro':      { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
   'iPhone 17':          { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
   'iPhone 17 Pro':      { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  // v0.7.1 (rilis Sep 2026): layar 18 Pro / 18 Pro Max = piksel & ppi sama persis dgn 17 Pro / 17 Pro Max
+  // (Apple: 2622×1206 & 2868×1320 @460 ppi) → resolusi KEMBAR; layar tidak membedakan 16 Pro/17/17 Pro/18 Pro.
+  'iPhone 18 Pro':      { w:402, h:874, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
   'iPhone 16 Pro Max':  { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
   'iPhone 17 Pro Max':  { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
-  'iPhone Air':         { w:420, h:912, d:3, promo:true,  tt:true,  fid:true,  cyc:true  }
+  'iPhone 18 Pro Max':  { w:440, h:956, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  'iPhone Air':         { w:420, h:912, d:3, promo:true,  tt:true,  fid:true,  cyc:true  },
+  // v0.7.1 iPhone Duo (lipat, Sep 2026, Touch ID): DUA layar — luar 1398×2034 @460 ppi, dalam 1878×2670 @430 ppi.
+  // Ukuran pt = piksel ÷ 3 (habis dibagi) TAPI belum dibuktikan di Duo asli → pasti:false: cocok salah satu = 🟢,
+  // tidak cocok = 🟡 cek manual (unknown_model), BUKAN 🔴. Hapus pasti:false bila sudah terbukti di perangkat nyata.
+  'iPhone Duo':         { w:466, h:678, d:3, w2:626, h2:890, pasti:false, promo:true, tt:true, fid:false, cyc:true }
 };
 // iPad: semua @2x, Touch ID kecuali iPad Pro 2018+ (Face ID), cycle count tidak tampil di Settings.
 // ProMotion di iPad hanya informatif — rAF Safari iPad sering dibatasi 60 fps walau panel 120Hz.
@@ -229,7 +237,7 @@ function deteksiIdentitas() {
   var uaDesktopMode = /Macintosh/.test(ua) && touch > 1;
   var isIpadUa = /iPad/.test(ua) || (navigator.platform === 'MacIntel' && touch > 1) || uaDesktopMode;
   // iPhone yang menyalakan Settings→Safari→Request Desktop Website TAMPAK persis seperti iPad mode desktop
-  // (UA Macintosh + sentuh) → pembedanya LAYAR: semua iPhone ≤ 440 pt, semua iPad ≥ 744 pt (sisi pendek).
+  // (UA Macintosh + sentuh) → pembedanya LAYAR: semua iPhone ≤ 440 pt (lipat Duo ≤ 626), semua iPad ≥ 744 pt (sisi pendek).
   var sisiPendek = Math.min(screen.width || 0, screen.height || 0);
   var deviceKind = isIphoneUa ? 'IPHONE' : (isIpadUa ? (sisiPendek > 0 && sisiPendek < 700 ? 'IPHONE' : 'IPAD') : 'BUKAN_APPLE');
   var isAppleGpu = gpu ? /apple/i.test(String(gpu)) : null;
@@ -270,7 +278,10 @@ function cocokkanModel(claimKey) {
   var sp = SPEC[claimKey]; if (!sp) return null;
   var w = Math.min(pid.screen_w_pts, pid.screen_h_pts);
   var h = Math.max(pid.screen_w_pts, pid.screen_h_pts);
-  var resMatch = (w === sp.w && h === sp.h && pid.dpr === sp.d);
+  // w2/h2 = layar kedua (iPhone lipat: Safari bisa dibuka di layar luar atau dalam)
+  var resMatch = pid.dpr === sp.d && ((w === sp.w && h === sp.h) || (!!sp.w2 && w === sp.w2 && h === sp.h2));
+  // Ukuran belum terbukti di perangkat nyata (pasti:false) + tidak cocok → 🟡 cek manual seperti model baru, bukan 🔴
+  var belumPasti = !resMatch && sp.pasti === false;
   var promoExpected = sp.promo;
   var promoStatus = 'NA';
   if (!fpsOk) promoStatus = (promoExpected === true) ? 'TIDAK_TERUKUR' : 'NA';
@@ -280,7 +291,7 @@ function cocokkanModel(claimKey) {
     else promoStatus = isIpad() ? 'TIDAK_TERUKUR_IPAD' : 'MISMATCH'; // iPhone: Low Power Mode bisa membatasi 60
   }
   else promoStatus = 'NA';
-  return { resolution_match: resMatch, unknown_model: false, expected: sp, promo_expected: promoExpected,
+  return { resolution_match: belumPasti ? null : resMatch, unknown_model: belumPasti, expected: sp, promo_expected: promoExpected,
            promo_measured_fps: pid.fps_measured, promo_status: promoStatus };
 }
 
@@ -376,7 +387,8 @@ function layarPilihModel() {
     S.deviceIdentity.model_claimed = key;
     S.pwaIdentity.model_check = m;
     var html = '';
-    if (m.unknown_model) html += '<div class="alert yellow">🟡 Model belum ada di tabel — cek <b>Settings → General → About → Model Name</b> ' +
+    if (m.unknown_model) html += '<div class="alert yellow">🟡 ' + (m.expected ? 'Ukuran layar ' + esc(key) + ' belum bisa dipastikan otomatis' : 'Model belum ada di tabel') +
+      ' — cek <b>Settings → General → About → Model Name</b> ' +
       'dan catat manual. Layar terbaca ' + Math.min(pid.screen_w_pts,pid.screen_h_pts) + '×' +
       Math.max(pid.screen_w_pts,pid.screen_h_pts) + ' @' + pid.dpr + 'x' + (m.promo_status === 'TERUKUR_120' ? ' • 120Hz terukur' : '') + '</div>';
     else if (m.resolution_match) html += '<div class="alert green">🟢 Layar cocok dgn spek ' + esc(key) + '</div>';
