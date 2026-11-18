@@ -40,7 +40,7 @@
 <div class="wrap">
   <div class="head">
     <h1>📱 Cek iPhone Gadai</h1>
-    <div class="sub">DRPE iOS v0.7.1 • tanpa install • tidak menyimpan data</div>
+    <div class="sub">DRPE iOS v0.7.2 • tanpa install • tidak menyimpan data</div>
   </div>
   <div id="app"></div>
 </div>
@@ -63,7 +63,8 @@ var S = {
 };
 
 // ===== Tabel spek Apple PER MODEL (pts x DPR; spek TETAP — bukan spec-learn) =====
-// promo=ProMotion 120Hz; tt=True Tone; fid=Face ID (false=Touch ID); cyc=cycle count tampil di Settings.
+// promo=ProMotion 120Hz (v0.7.2: hanya info, tidak dinilai — Safari membatasi rAF 60 fps);
+// tt=True Tone; fid=Face ID (false=Touch ID); cyc=cycle count tampil di Settings.
 // Satu kunci = satu model persis (bukan grup) supaya ProMotion/cycle bisa dinilai per model dan
 // label di laporan Telegram sama dgn "Model Name" di Settings → General → About.
 // Model yang belum ada di tabel dipilih lewat MODEL_LAIN (🟡, bukan 🔴) — tabel dipelihara manual saat rilis.
@@ -119,7 +120,7 @@ var SPEC_IPHONE = {
   'iPhone Duo':         { w:466, h:678, d:3, w2:626, h2:890, pasti:false, promo:true, tt:true, fid:false, cyc:true }
 };
 // iPad: semua @2x, Touch ID kecuali iPad Pro 2018+ (Face ID), cycle count tidak tampil di Settings.
-// ProMotion di iPad hanya informatif — rAF Safari iPad sering dibatasi 60 fps walau panel 120Hz.
+// ProMotion (iPad & iPhone) hanya informatif — rAF Safari dibatasi 60 fps walau panel 120Hz.
 var SPEC_IPAD = {
   'iPad (5th/6th gen 2017–2018)':        { w:768,  h:1024, d:2, promo:false, tt:true, fid:false, cyc:false },
   'iPad Air 2':                          { w:768,  h:1024, d:2, promo:false, tt:true, fid:false, cyc:false },
@@ -283,14 +284,11 @@ function cocokkanModel(claimKey) {
   // Ukuran belum terbukti di perangkat nyata (pasti:false) + tidak cocok → 🟡 cek manual seperti model baru, bukan 🔴
   var belumPasti = !resMatch && sp.pasti === false;
   var promoExpected = sp.promo;
+  // v0.7.2: Safari iPhone/iPad membatasi requestAnimationFrame ke 60 fps walau panel ProMotion 120Hz
+  // (94/94 laporan iPhone Pro terukur 60–61 fps, Nov 2026) → 60 fps BUKAN bukti layar diganti.
+  // Hanya ≥100 fps yang berarti (OK); selain itu TIDAK_DINILAI = info netral (dulu MISMATCH 🟡 palsu).
   var promoStatus = 'NA';
-  if (!fpsOk) promoStatus = (promoExpected === true) ? 'TIDAK_TERUKUR' : 'NA';
-  else if (promoExpected === true) {
-    if (promoMeasured) promoStatus = 'OK';
-    // iPad: Safari sering mengunci rAF di 60 fps walau panel ProMotion → bukan bukti layar diganti
-    else promoStatus = isIpad() ? 'TIDAK_TERUKUR_IPAD' : 'MISMATCH'; // iPhone: Low Power Mode bisa membatasi 60
-  }
-  else promoStatus = 'NA';
+  if (promoExpected === true) promoStatus = promoMeasured ? 'OK' : 'TIDAK_DINILAI';
   return { resolution_match: belumPasti ? null : resMatch, unknown_model: belumPasti, expected: sp, promo_expected: promoExpected,
            promo_measured_fps: pid.fps_measured, promo_status: promoStatus };
 }
@@ -398,20 +396,12 @@ function layarPilihModel() {
     var mustahil = iosMelebihiModel(key, pid.ios_version_ua);
     if (mustahil) html += '<div class="alert red">🔴 ' + esc(key) + ' maksimal iOS ' + mustahil.maks + ', tapi iPhone ini iOS ' +
       mustahil.terbaca + ' — model SALAH PILIH. Cek <b>Settings → General → About → Model Name</b> lalu pilih ulang.</div>';
+    // v0.7.2: ProMotion = info netral (tanpa kuning, tanpa "ukur ulang" / Low Power Mode — 60 fps adalah batas Safari)
     if (m.promo_expected === true) {
-      if (m.promo_status === 'OK') html += '<div class="alert green">🟢 ProMotion 120Hz terukur (' + m.promo_measured_fps + ' fps) — layar asli</div>';
-      else if (m.promo_status === 'TIDAK_TERUKUR') html += '<div class="alert yellow">🟡 Refresh rate tidak terukur. ' +
-        '<a href="#" id="ulang">Ukur ulang</a> (jaga halaman tetap terbuka).</div>';
-      else if (m.promo_status === 'TIDAK_TERUKUR_IPAD') html += '<div class="alert yellow">🟡 ProMotion tidak terukur (' + m.promo_measured_fps + ' fps) — ' +
-        'Safari iPad sering membatasi 60 fps, bukan bukti layar diganti (info).</div>';
-      else html += '<div class="alert yellow">🟡 ProMotion TIDAK terukur 120Hz (' + m.promo_measured_fps + ' fps). ' +
-        'Matikan Low Power Mode (Settings→Battery) lalu <a href="#" id="ulang">ukur ulang</a>. ' +
-        'Tetap 60 = layar kemungkinan diganti panel non-ori.</div>';
+      if (m.promo_status === 'OK') html += '<div class="alert green">🟢 ProMotion 120Hz terukur (' + m.promo_measured_fps + ' fps)</div>';
+      else html += '<p class="muted">ℹ️ ProMotion 120Hz tidak bisa diukur dari Safari (dibatasi 60 fps) — tidak dinilai, lanjut saja.</p>';
     }
     hasil.innerHTML = html;
-    var ulang = hasil.querySelector('#ulang');
-    if (ulang) ulang.onclick = function (ev) { ev.preventDefault(); ukurFps().then(function (f) {
-      S.pwaIdentity.fps_measured = f; sel.onchange(); }); };
     btn.disabled = false;
   };
   btn.onclick = function () {
